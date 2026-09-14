@@ -1,0 +1,15 @@
+# Generated Wine prefixes and packages — ship via GitHub Actions artifacts only
+wineprefix*/
+*.ext4
+*.img
+*.tar
+*.tar.xz
+*.tar.gz
+*.zip
+artifacts/
+
+# Local extract / build leftovers
+build-box86/
+wine-installer/
+*.deb
+.DS_Store

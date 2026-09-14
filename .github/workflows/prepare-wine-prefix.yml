@@ -1,0 +1,75 @@
+name: Prepare Wine 7.1 win32 prefix
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/prepare-wine-prefix.yml"
+      - "scripts/prepare-wine-prefix.sh"
+      - "docs/WINE_PREFIX.md"
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-prefix:
+    name: Create minimal Wine 7.1 i386 prefix
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enable i386 and install Wine runtime libraries
+        run: |
+          set -euo pipefail
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          # wine32 pulls the i386 shared libraries Wine 7.1 needs.
+          # We do not use Ubuntu's Wine binary; we extract WineHQ 7.1.
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            wget ca-certificates xz-utils xvfb \
+            wine32:i386
+
+      - name: Create SuperStation-matching Wine paths
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /media/fat/Windows
+          sudo chown "$USER:$USER" /media/fat/Windows
+
+      - name: Prepare prefix
+        run: |
+          set -euo pipefail
+          chmod +x scripts/prepare-wine-prefix.sh
+          export WINE_ROOT=/media/fat/Windows/wine-installer/opt/wine-devel
+          export WINEPREFIX_PATH=/media/fat/Windows/wineprefix-prebuilt
+          export WORKDIR="$GITHUB_WORKSPACE/.wine-prepare-work"
+          export OUT_TAR="$GITHUB_WORKSPACE/wineprefix-prebuilt.tar.xz"
+          scripts/prepare-wine-prefix.sh
+
+      - name: Record builder evidence
+        run: |
+          set -euo pipefail
+          {
+            echo "runner=$(uname -m)"
+            echo "os=$(. /etc/os-release && echo "$PRETTY_NAME")"
+            /media/fat/Windows/wine-installer/opt/wine-devel/bin/wine --version
+            echo "prefix_entries=$(find /media/fat/Windows/wineprefix-prebuilt | wc -l)"
+            echo "system32_entries=$(find /media/fat/Windows/wineprefix-prebuilt/drive_c/windows/system32 | wc -l)"
+            ls -la /media/fat/Windows/wineprefix-prebuilt
+            echo "--- dosdevices ---"
+            ls -la /media/fat/Windows/wineprefix-prebuilt/dosdevices
+            echo "--- manifest ---"
+            cat /media/fat/Windows/wineprefix-prebuilt/PREFIX_MANIFEST.txt
+          } | tee "$GITHUB_WORKSPACE/prefix-builder.log"
+
+      - name: Upload prefix artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wineprefix-prebuilt
+          path: |
+            wineprefix-prebuilt.tar.xz
+            prefix-builder.log
+          if-no-files-found: error
+          retention-days: 14
