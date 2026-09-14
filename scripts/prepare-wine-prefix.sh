@@ -77,11 +77,35 @@ log "Verifying console on the builder (native x86, not Box86)"
 "$WINE_ROOT/bin/wineserver" -k || true
 "$WINE_ROOT/bin/wineserver" -w || true
 
+# Wine copies builtins into system32. Replace duplicates with symlinks to the
+# SuperStation Wine tree so the artifact stays small and path-stable.
+WINEDLLDIR="$WINE_ROOT/lib/wine/i386-windows"
+if [ -d "$WINEDLLDIR" ]; then
+  for dest in "$WINEPREFIX_PATH/drive_c/windows/system32"/*; do
+    [ -e "$dest" ] || continue
+    [ -L "$dest" ] && continue
+    base=$(basename "$dest")
+    if [ -f "$WINEDLLDIR/$base" ]; then
+      rm -f "$dest"
+      ln -s "$WINEDLLDIR/$base" "$dest"
+    fi
+  done
+fi
+
 # Drop caches/temp that are not needed to prove cmd.exe
 rm -rf \
   "$WINEPREFIX_PATH/drive_c/users/$USER/Temp" \
   "$WINEPREFIX_PATH/drive_c/windows/temp"/* \
   "$WINEPREFIX_PATH/drive_c/windows/logs" 2>/dev/null || true
+
+log "Re-checking cmd after symlink thinning"
+if command -v xvfb-run >/dev/null 2>&1; then
+  xvfb-run -a "$WINE_ROOT/bin/wine" cmd /c echo HELLO FROM WINDOWS ON SUPERSTATION
+else
+  "$WINE_ROOT/bin/wine" cmd /c echo HELLO FROM WINDOWS ON SUPERSTATION
+fi
+"$WINE_ROOT/bin/wineserver" -k || true
+"$WINE_ROOT/bin/wineserver" -w || true
 
 cat > "$WINEPREFIX_PATH/PREFIX_MANIFEST.txt" <<EOF
 wine_version=wine-$WINE_VERSION

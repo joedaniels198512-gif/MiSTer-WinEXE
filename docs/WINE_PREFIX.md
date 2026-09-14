@@ -24,7 +24,10 @@ On `ubuntu-22.04` the job:
 4. Runs `wineboot --init` with `WINEARCH=win32`.
 5. Checks `cmd.exe /c ver` and `cmd.exe /c echo HELLO FROM WINDOWS ON SUPERSTATION`
    on the builder (native x86, not Box86).
-6. Uploads `wineprefix-prebuilt.tar.xz` as a GitHub Actions artifact.
+6. Replaces copied `system32` builtins with symlinks to
+   `/media/fat/Windows/wine-installer/opt/wine-devel/lib/wine/i386-windows`
+   so the artifact stays small enough for the SuperStation.
+7. Uploads `wineprefix-prebuilt.tar.xz` as a GitHub Actions artifact.
 
 Generated prefixes are **not** committed to git. Use the workflow artifact.
 
