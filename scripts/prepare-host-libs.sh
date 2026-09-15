@@ -45,10 +45,25 @@ for url in "${PACKAGE_URLS[@]}"; do
   dpkg-deb -x "$WORKDIR/debs/$base" "$WORKDIR/extract"
 done
 
-# Flatten shared libraries into lib/
-find "$WORKDIR/extract" -type f \( -name 'lib*.so*' -o -name '*.so' \) | while read -r so; do
-  cp -a "$so" "$OUT_DIR/lib/"
+# Flatten shared libraries into lib/, including SONAME symlinks (libfoo.so.1).
+for dir in \
+  "$WORKDIR/extract/usr/lib/arm-linux-gnueabihf" \
+  "$WORKDIR/extract/lib/arm-linux-gnueabihf" \
+  "$WORKDIR/extract/usr/lib"
+do
+  if [ -d "$dir" ]; then
+    find "$dir" -maxdepth 1 \( -name 'lib*.so*' -o -name '*.so' \) -exec cp -a {} "$OUT_DIR/lib/" \;
+  fi
 done
+# If a deb only stored the real file, invent the usual SONAME link.
+(
+  cd "$OUT_DIR/lib"
+  for real in lib*.so.[0-9]*.[0-9]*; do
+    [ -e "$real" ] || continue
+    soname=$(echo "$real" | sed -E 's/(\.so\.[0-9]+)\..*/\1/')
+    [ -e "$soname" ] || ln -sf "$real" "$soname"
+  done
+)
 
 # fc-list / fc-cache for a simple on-device init test
 if [ -x "$WORKDIR/extract/usr/bin/fc-list" ]; then
