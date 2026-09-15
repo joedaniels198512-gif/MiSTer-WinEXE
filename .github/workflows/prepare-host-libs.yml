@@ -1,0 +1,64 @@
+name: Prepare ARMHF host-libs
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/prepare-host-libs.yml"
+      - "scripts/prepare-host-libs.sh"
+      - "docs/HOST_LIBS.md"
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-host-libs:
+    name: Extract Debian Bullseye armhf fontconfig bundle
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install extract/inspect tools
+        run: |
+          set -euo pipefail
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            wget ca-certificates xz-utils binutils-arm-linux-gnueabihf
+
+      - name: Build host-libs tree
+        run: |
+          set -euo pipefail
+          chmod +x scripts/prepare-host-libs.sh
+          export OUT_DIR="$GITHUB_WORKSPACE/host-libs"
+          export WORKDIR="$GITHUB_WORKSPACE/.host-libs-work"
+          export OUT_TAR="$GITHUB_WORKSPACE/host-libs.tar.xz"
+          scripts/prepare-host-libs.sh
+
+      - name: Record builder evidence
+        run: |
+          set -euo pipefail
+          {
+            echo "runner=$(uname -m)"
+            echo "os=$(. /etc/os-release && echo "$PRETTY_NAME")"
+            echo "--- tree ---"
+            find host-libs | sort
+            echo "--- file(1) ---"
+            file host-libs/lib/* host-libs/bin/* 2>/dev/null || true
+            echo "--- notes ---"
+            cat host-libs/ELF_NOTES.txt 2>/dev/null || true
+            echo "--- manifest ---"
+            cat host-libs/HOST_LIBS_MANIFEST.txt
+          } | tee "$GITHUB_WORKSPACE/host-libs-builder.log"
+
+      - name: Upload host-libs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-libs
+          path: |
+            host-libs.tar.xz
+            host-libs-builder.log
+          if-no-files-found: error
+          retention-days: 14

@@ -1,5 +1,6 @@
 # Generated Wine prefixes and packages — ship via GitHub Actions artifacts only
 wineprefix*/
+host-libs/
 *.ext4
 *.img
 *.tar

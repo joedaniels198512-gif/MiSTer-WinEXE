@@ -19,6 +19,7 @@ Prove Windows console execution:
 | `/media/fat/Windows/box86-ss1/box86` | Working Cortex-A9 Box86 |
 | `/media/fat/Windows/wine-installer/opt/wine-devel/` | Wine 7.1 i386 |
 | `/media/fat/Windows/wineprefix-prebuilt` | Prefix from GitHub Actions |
+| `/media/fat/Windows/host-libs/` | Relocatable ARMHF fontconfig + deps |
 
 ## Reproduce the prefix
 

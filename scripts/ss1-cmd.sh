@@ -17,6 +17,10 @@ export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:-winemenubuilder.exe=d}"
 export WINEDEBUG="${WINEDEBUG:--all}"
 export BOX86_NOBANNER="${BOX86_NOBANNER:-1}"
 export BOX86_LD_LIBRARY_PATH="${BOX86_LD_LIBRARY_PATH:-/media/fat/Windows/box86-extracted/usr/lib/box86-i386-linux-gnu:/media/fat/Windows/wine-installer/opt/wine-devel/lib:/media/fat/Windows/wine-installer/opt/wine-devel/lib/wine/i386-unix}"
+# Native ARM libs for Box86 wrappers (not x86). Do not use system /usr.
+export LD_LIBRARY_PATH="/media/fat/Windows/host-libs/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export FONTCONFIG_FILE="${FONTCONFIG_FILE:-/media/fat/Windows/host-libs/etc/fonts/fonts.conf}"
+export FONTCONFIG_PATH="${FONTCONFIG_PATH:-/media/fat/Windows/host-libs/etc/fonts}"
 unset DISPLAY
 unset WAYLAND_DISPLAY
 
