@@ -1,0 +1,72 @@
+name: Prepare ARMHF X11 fbdev runtime
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/prepare-x11-runtime.yml"
+      - "scripts/prepare-x11-runtime.sh"
+      - "scripts/ss1-xorg.sh"
+      - "scripts/ss1-x11-env.sh"
+      - "docs/X11_RUNTIME.md"
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-x11-runtime:
+    name: Extract Debian Bullseye armhf X.Org + fbdev
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install extract/inspect tools
+        run: |
+          set -euo pipefail
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            wget ca-certificates xz-utils binutils-arm-linux-gnueabihf \
+            x11-xkb-utils
+
+      - name: Build x11 runtime tree
+        run: |
+          set -euo pipefail
+          chmod +x scripts/prepare-x11-runtime.sh
+          export OUT_DIR="$GITHUB_WORKSPACE/x11"
+          export WORKDIR="$GITHUB_WORKSPACE/.x11-extract"
+          export OUT_TAR="$GITHUB_WORKSPACE/x11-runtime.tar.xz"
+          scripts/prepare-x11-runtime.sh
+
+      - name: Record builder evidence
+        run: |
+          set -euo pipefail
+          {
+            echo "runner=$(uname -m)"
+            echo "os=$(. /etc/os-release && echo "$PRETTY_NAME")"
+            echo "--- required files ---"
+            ls -l x11/lib/xorg/Xorg x11/lib/xorg/modules/drivers/fbdev_drv.so \
+              x11/lib/libX11.so.6 x11/lib/libGL.so.1 x11/lib/libvulkan.so.1 \
+              x11/etc/X11/xorg.conf
+            echo "--- tree (trimmed) ---"
+            find x11 -type f | sort | head -200
+            echo "--- file(1) ---"
+            file x11/lib/xorg/Xorg x11/lib/xorg/modules/drivers/fbdev_drv.so \
+              x11/bin/xset x11/lib/libX11.so.6 x11/lib/libGL.so.1
+            echo "--- notes ---"
+            cat x11/ELF_NOTES.txt 2>/dev/null || true
+            echo "--- manifest ---"
+            cat x11/X11_MANIFEST.txt
+          } | tee "$GITHUB_WORKSPACE/x11-runtime-builder.log"
+
+      - name: Upload x11-runtime artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: x11-runtime
+          path: |
+            x11-runtime.tar.xz
+            x11-runtime-builder.log
+          if-no-files-found: error
+          retention-days: 14
