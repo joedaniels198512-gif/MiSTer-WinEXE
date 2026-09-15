@@ -117,7 +117,7 @@ notes=dosdevices and system32 symlinks expect Wine at $WINE_ROOT
 EOF
 
 log "Packing $OUT_TAR"
-tar -C "$(dirname "$WINEPREFIX_PATH")" -cJf "$OUT_TAR" "$(basename "$WINEPREFIX_PATH")"
+tar --owner=root --group=root -C "$(dirname "$WINEPREFIX_PATH")" -cJf "$OUT_TAR" "$(basename "$WINEPREFIX_PATH")"
 ls -lh "$OUT_TAR"
 log "Prefix file count: $(find "$WINEPREFIX_PATH" | wc -l)"
 log "DONE"
