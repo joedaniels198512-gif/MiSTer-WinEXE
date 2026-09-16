@@ -1,7 +1,7 @@
 name: Build WinEXE X11 presenter
 
 # ARM-only. Do not compile the FPGA core here.
-# Binary must target glibc 2.31 (MiSTer), so compile inside Debian Bullseye.
+# Target glibc 2.31 (MiSTer) via Debian Bullseye armhf-cross, not Ubuntu 22.04.
 
 on:
   workflow_dispatch:
@@ -29,19 +29,39 @@ jobs:
             SNAP=http://snapshot.debian.org/archive/debian/20220419T021707Z
             printf "deb %s bullseye main\n" "$SNAP" > /etc/apt/sources.list
             printf "Acquire::Check-Valid-Until \"false\";\n" > /etc/apt/apt.conf.d/99snapshot
-            dpkg --add-architecture armhf
             apt-get update
             DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
               gcc-arm-linux-gnueabihf libc6-dev-armhf-cross \
-              libx11-dev:armhf libxext-dev:armhf libxfixes-dev:armhf \
               wget ca-certificates binutils file
-            wget -q --user-agent="ss1-winexe-presenter/1.0" -O dummy.deb \
-              "$SNAP/pool/main/x/xserver-xorg-video-dummy/xserver-xorg-video-dummy_0.3.8-1+b1_armhf.deb"
-            dpkg-deb -x dummy.deb dummy-extract
-            cp -a dummy-extract/usr/lib/xorg/modules/drivers/dummy_drv.so dummy_drv.so
+            mkdir -p debs extract
+            UA="ss1-winexe-presenter/1.0"
+            fetch() { wget -q --user-agent="$UA" -P debs "$1"; }
+            fetch "$SNAP/pool/main/libx/libx11/libx11-6_1.7.2-1_armhf.deb"
+            fetch "$SNAP/pool/main/libx/libxext/libxext6_1.3.3-1.1_armhf.deb"
+            fetch "$SNAP/pool/main/libx/libxfixes/libxfixes3_5.0.3-2_armhf.deb"
+            fetch "$SNAP/pool/main/libx/libxcb/libxcb1_1.14-3_armhf.deb"
+            fetch "$SNAP/pool/main/libx/libxau/libxau6_1.0.9-1_armhf.deb"
+            fetch "$SNAP/pool/main/libx/libxdmcp/libxdmcp6_1.1.2-3_armhf.deb"
+            fetch "$SNAP/pool/main/libb/libbsd/libbsd0_0.11.3-1_armhf.deb"
+            fetch "$SNAP/pool/main/libm/libmd/libmd0_1.0.3-3_armhf.deb"
+            fetch "$SNAP/pool/main/libx/libx11/libx11-dev_1.7.2-1_armhf.deb"
+            fetch "$SNAP/pool/main/libx/libxext/libxext-dev_1.3.3-1.1_armhf.deb"
+            fetch "$SNAP/pool/main/libx/libxfixes/libxfixes-dev_5.0.3-2_armhf.deb"
+            fetch "$SNAP/pool/main/x/xorgproto/x11proto-dev_2020.1-1_all.deb"
+            fetch "$SNAP/pool/main/x/xserver-xorg-video-dummy/xserver-xorg-video-dummy_0.3.8-1+b1_armhf.deb"
+            for deb in debs/*.deb; do
+              dpkg-deb -x "$deb" extract
+            done
+            cp -a extract/usr/lib/xorg/modules/drivers/dummy_drv.so dummy_drv.so
+            LIBDIR=extract/usr/lib/arm-linux-gnueabihf
+            INCDIR=extract/usr/include
+            ln -sfn libX11.so.6 "$LIBDIR/libX11.so"
+            ln -sfn libXext.so.6 "$LIBDIR/libXext.so"
+            ln -sfn libXfixes.so.3 "$LIBDIR/libXfixes.so"
             arm-linux-gnueabihf-gcc -O2 -Wall \
               -o ss1-winexe-x11-present scripts/ss1-winexe-x11-present.c \
-              -L/usr/lib/arm-linux-gnueabihf -Wl,-rpath-link,/usr/lib/arm-linux-gnueabihf \
+              -I"$INCDIR" \
+              -L"$LIBDIR" -Wl,-rpath-link,"$LIBDIR" \
               -lX11 -lXext -lXfixes \
               -Wl,-rpath,/media/fat/Windows/x11/lib
             file ss1-winexe-x11-present dummy_drv.so
