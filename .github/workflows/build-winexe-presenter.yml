@@ -1,6 +1,7 @@
 name: Build WinEXE X11 presenter
 
 # ARM-only. Do not compile the FPGA core here.
+# Binary must target glibc 2.31 (MiSTer), so compile inside Debian Bullseye.
 
 on:
   workflow_dispatch:
@@ -20,54 +21,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install armhf gcc and X11 headers
-        run: |
-          sudo DEBIAN_FRONTEND=noninteractive apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            gcc-arm-linux-gnueabihf libc6-dev-armhf-cross \
-            libx11-dev libxext-dev libxfixes-dev \
-            wget ca-certificates binutils xz-utils
-
-      - name: Fetch Bullseye armhf X11 link libs + dummy driver
+      - name: Build presenter + extract dummy in Debian Bullseye
         run: |
           set -euo pipefail
-          SNAP=https://snapshot.debian.org/archive/debian/20220419T021707Z/pool/main
-          mkdir -p debs extract
-          UA="ss1-winexe-presenter/1.0"
-          fetch() { wget -q --user-agent="$UA" -P debs "$1"; }
-          fetch "$SNAP/libx/libx11/libx11-6_1.7.2-1_armhf.deb"
-          fetch "$SNAP/libx/libxext/libxext6_1.3.3-1.1_armhf.deb"
-          fetch "$SNAP/libx/libxfixes/libxfixes3_5.0.3-2_armhf.deb"
-          fetch "$SNAP/libx/libxcb/libxcb1_1.14-3_armhf.deb"
-          fetch "$SNAP/libx/libxau/libxau6_1.0.9-1_armhf.deb"
-          fetch "$SNAP/libx/libxdmcp/libxdmcp6_1.1.2-3_armhf.deb"
-          fetch "$SNAP/libb/libbsd/libbsd0_0.11.3-1_armhf.deb"
-          fetch "$SNAP/libm/libmd/libmd0_1.0.3-3_armhf.deb"
-          fetch "$SNAP/x/xserver-xorg-video-dummy/xserver-xorg-video-dummy_0.3.8-1+b1_armhf.deb"
-          ls -l debs
-          for deb in debs/*.deb; do
-            dpkg-deb -x "$deb" extract
-          done
-          find extract -name 'dummy_drv.so' -print
-          cp -a extract/usr/lib/xorg/modules/drivers/dummy_drv.so dummy_drv.so
-          file dummy_drv.so
-
-      - name: Build ss1-winexe-x11-present
-        run: |
-          set -euo pipefail
-          LIBDIR=extract/usr/lib/arm-linux-gnueabihf
-          ls -l "$LIBDIR"
-          ln -sfn libX11.so.6 "$LIBDIR/libX11.so"
-          ln -sfn libXext.so.6 "$LIBDIR/libXext.so"
-          ln -sfn libXfixes.so.3 "$LIBDIR/libXfixes.so"
-          arm-linux-gnueabihf-gcc -O2 -Wall \
-            -o ss1-winexe-x11-present scripts/ss1-winexe-x11-present.c \
-            -I/usr/include \
-            -L"$LIBDIR" -Wl,-rpath-link,"$LIBDIR" -lX11 -lXext -lXfixes \
-            -Wl,-rpath,/media/fat/Windows/x11/lib
-          arm-linux-gnueabihf-size ss1-winexe-x11-present
-          arm-linux-gnueabihf-readelf -d ss1-winexe-x11-present | grep NEEDED
-          file ss1-winexe-x11-present
+          docker run --rm -v "$GITHUB_WORKSPACE:/src" -w /src debian:bullseye bash -lc '
+            set -euo pipefail
+            dpkg --add-architecture armhf
+            apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+              gcc-arm-linux-gnueabihf libc6-dev-armhf-cross \
+              libx11-dev:armhf libxext-dev:armhf libxfixes-dev:armhf \
+              wget ca-certificates binutils file
+            SNAP=https://snapshot.debian.org/archive/debian/20220419T021707Z/pool/main
+            wget -q --user-agent="ss1-winexe-presenter/1.0" -O dummy.deb \
+              "$SNAP/x/xserver-xorg-video-dummy/xserver-xorg-video-dummy_0.3.8-1+b1_armhf.deb"
+            dpkg-deb -x dummy.deb dummy-extract
+            cp -a dummy-extract/usr/lib/xorg/modules/drivers/dummy_drv.so dummy_drv.so
+            arm-linux-gnueabihf-gcc -O2 -Wall \
+              -o ss1-winexe-x11-present scripts/ss1-winexe-x11-present.c \
+              -L/usr/lib/arm-linux-gnueabihf -lX11 -lXext -lXfixes \
+              -Wl,-rpath,/media/fat/Windows/x11/lib
+            file ss1-winexe-x11-present dummy_drv.so
+            arm-linux-gnueabihf-readelf -d ss1-winexe-x11-present | grep NEEDED
+            echo "=== GLIBC symbols ==="
+            arm-linux-gnueabihf-objdump -T ss1-winexe-x11-present | awk "/GLIBC_/ {print \$NF}" | sort -u
+          '
 
       - uses: actions/upload-artifact@v4
         with:
