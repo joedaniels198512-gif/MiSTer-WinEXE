@@ -26,20 +26,23 @@ jobs:
           set -euo pipefail
           docker run --rm -v "$GITHUB_WORKSPACE:/src" -w /src debian:bullseye bash -lc '
             set -euo pipefail
+            SNAP=http://snapshot.debian.org/archive/debian/20220419T021707Z
+            printf "deb %s bullseye main\n" "$SNAP" > /etc/apt/sources.list
+            printf "Acquire::Check-Valid-Until \"false\";\n" > /etc/apt/apt.conf.d/99snapshot
             dpkg --add-architecture armhf
             apt-get update
             DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
               gcc-arm-linux-gnueabihf libc6-dev-armhf-cross \
               libx11-dev:armhf libxext-dev:armhf libxfixes-dev:armhf \
               wget ca-certificates binutils file
-            SNAP=https://snapshot.debian.org/archive/debian/20220419T021707Z/pool/main
             wget -q --user-agent="ss1-winexe-presenter/1.0" -O dummy.deb \
-              "$SNAP/x/xserver-xorg-video-dummy/xserver-xorg-video-dummy_0.3.8-1+b1_armhf.deb"
+              "$SNAP/pool/main/x/xserver-xorg-video-dummy/xserver-xorg-video-dummy_0.3.8-1+b1_armhf.deb"
             dpkg-deb -x dummy.deb dummy-extract
             cp -a dummy-extract/usr/lib/xorg/modules/drivers/dummy_drv.so dummy_drv.so
             arm-linux-gnueabihf-gcc -O2 -Wall \
               -o ss1-winexe-x11-present scripts/ss1-winexe-x11-present.c \
-              -L/usr/lib/arm-linux-gnueabihf -lX11 -lXext -lXfixes \
+              -L/usr/lib/arm-linux-gnueabihf -Wl,-rpath-link,/usr/lib/arm-linux-gnueabihf \
+              -lX11 -lXext -lXfixes \
               -Wl,-rpath,/media/fat/Windows/x11/lib
             file ss1-winexe-x11-present dummy_drv.so
             arm-linux-gnueabihf-readelf -d ss1-winexe-x11-present | grep NEEDED
