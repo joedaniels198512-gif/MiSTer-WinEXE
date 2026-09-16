@@ -1,0 +1,103 @@
+name: Build WinEXE_Test FPGA core
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "fpga/**"
+      - "scripts/ss1-winexe-present.c"
+      - ".github/workflows/build-winexe-core.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  compile-arm-presenter:
+    name: Cross-compile ss1-winexe-present
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install armhf gcc
+        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            gcc-arm-linux-gnueabihf libc6-dev-armhf-cross
+      - name: Build
+        run: |
+          arm-linux-gnueabihf-gcc -O2 -Wall -static \
+            -o ss1-winexe-present scripts/ss1-winexe-present.c
+          arm-linux-gnueabihf-size ss1-winexe-present
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ss1-winexe-present
+          path: ss1-winexe-present
+          if-no-files-found: error
+
+  compile-fpga:
+    name: Quartus 17 WinEXE_Test.rbf
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          sudo docker image prune -af
+          df -h /
+
+      - name: Static sanity (fail before Quartus if wrong)
+        run: |
+          set -euo pipefail
+          qsf=fpga/WinEXE.qsf
+          sv=fpga/WinEXE.sv
+          grep -q 'VERILOG_MACRO "MISTER_FB=1"' "$qsf"
+          grep -v '^#' "$qsf" | grep -q 'MISTER_FB=1'
+          grep -q "32'h3000_0000" "$sv"
+          grep -q "12'd640" "$sv"
+          grep -q "12'd480" "$sv"
+          grep -q "14'd2560" "$sv"
+          grep -q "5'b10110" "$sv"
+          ! grep -qiE 'fb_line_reader|module[[:space:]]+mycore' fpga/WinEXE.qip fpga/WinEXE.sv fpga/rtl/*.v
+          test ! -e fpga/rtl/fb_line_reader.v
+          test ! -e fpga/rtl/mycore.v
+          test -f fpga/sys/sys_top.v
+          test -f fpga/sys/ascal.vhd
+          test -f fpga/sys/emu_ports.vh
+          test -f fpga/rtl/pll.qip
+          test -f fpga/rtl/pll.v
+          test -f fpga/rtl/vga640.v
+          test -f fpga/WinEXE.qpf
+          echo SANITY_OK
+
+      - name: Compile WinEXE core (Quartus 17.0)
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE/fpga:/build" -w /build \
+            raetro/quartus:17.0 \
+            sh -c 'quartus_sh --flow compile WinEXE.qpf'
+          cp -f fpga/output_files/WinEXE.rbf "$GITHUB_WORKSPACE/WinEXE_Test.rbf"
+          ls -l fpga/output_files/WinEXE.rbf WinEXE_Test.rbf
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WinEXE_Test.rbf
+          path: WinEXE_Test.rbf
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WinEXE.rbf
+          path: fpga/output_files/WinEXE.rbf
+          if-no-files-found: error
+
+      - name: Upload compilation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quartus-reports
+          path: |
+            fpga/output_files/*.rpt
+            fpga/output_files/*.summary
+          if-no-files-found: ignore

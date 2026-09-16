@@ -13,8 +13,26 @@ x11-runtime/
 *.zip
 artifacts/
 
+# User-supplied Windows binaries (drop on the SuperStation, do not commit)
+apps/*.exe
+apps/*.dll
+apps/*.bmp
+apps/*.com
+
 # Local extract / build leftovers
 build-box86/
 wine-installer/
 *.deb
 .DS_Store
+
+# Quartus generated (compile is GitHub Actions)
+fpga/db/
+fpga/incremental_db/
+fpga/output_files/
+fpga/greybox_tmp/
+fpga/*.qws
+fpga/*.bak
+fpga/*.qdf
+fpga/c5_pin_model_dump.txt
+fpga/PLLJ_PLLSPE_INFO.txt
+fpga/build_id.v
