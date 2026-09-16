@@ -55,7 +55,11 @@ jobs:
       - name: Build ss1-winexe-x11-present
         run: |
           set -euo pipefail
-          LIBDIR=$(find extract -type d -name arm-linux-gnueabihf | head -1)
+          LIBDIR=extract/usr/lib/arm-linux-gnueabihf
+          ls -l "$LIBDIR"
+          ln -sfn libX11.so.6 "$LIBDIR/libX11.so"
+          ln -sfn libXext.so.6 "$LIBDIR/libXext.so"
+          ln -sfn libXfixes.so.3 "$LIBDIR/libXfixes.so"
           arm-linux-gnueabihf-gcc -O2 -Wall \
             -o ss1-winexe-x11-present scripts/ss1-winexe-x11-present.c \
             -I/usr/include \
