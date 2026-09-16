@@ -136,20 +136,35 @@ the running core. F12 still opens the MiSTer OSD on top, which is desired.
 6. Fail: no sync, or bars missing → do not involve Wine; consider the
    VGA+DDRAM fallback compile.
 
-Only after bars work:
+Colour-bar HDMI test **passed**. FPGA timing/video is frozen.
 
-- Keep USB mouse/keyboard on Linux evdev (unchanged).
-- Point Xorg at a **private** 640×480 buffer if `/dev/fb0` would reintroduce
-  ShadowFB corruption; v1 may simply `memcpy` a 640×480 crop or a dummy
-  pixmap. Not designed in detail until bars pass.
-- Launch `/media/fat/Windows/apps/notepad.exe` via existing `ss1-run-exe.sh`.
+## GUI path (after bars)
+
+Do **not** use `/dev/fb0`, `ss1-fb-present`, HPS n=1, or F9.
+
+```
+Wine / winex11
+    → Xorg 1.20.11 + xf86-video-dummy 640×480 RAM FB
+       + existing evdev (event0 mouse, event1 keyboard, GrabDevice false)
+    → ss1-winexe-x11-present (MIT-SHM GetImage + XFixes cursor)
+    → /dev/mem 0x30000000 BGRX stride 2560
+    → WinEXE_Test.rbf ascal → HDMI
+```
+
+Xvfb was rejected because it has no native USB evdev path. Dummy keeps
+the proven input stack and never opens MiSTer_fb.
+
+Launcher: `scripts/ss1-winexe-notepad.sh`
+Presenter: GHA `.github/workflows/build-winexe-presenter.yml` (ARM only).
 
 ## Files
 
 - `fpga/` — DVD `sys/` + 27 MHz PLL, `WinEXE.sv` / `.qsf` / `.qpf` / `.qip`
 - `.github/workflows/build-winexe-core.yml` — disk-free +
   `raetro/quartus:17.0` → `WinEXE_Test.rbf`
-- `scripts/ss1-winexe-present.c` — ARM BGRX pattern writer
+- `scripts/ss1-winexe-present.c` — ARM BGRX colour-bar writer
+- `scripts/ss1-winexe-x11-present.c` — X dummy → `0x30000000` loop
+- `scripts/ss1-winexe-notepad.sh` — dummy Xorg + presenter + XP Notepad
 
 ## Out of scope for this compile
 

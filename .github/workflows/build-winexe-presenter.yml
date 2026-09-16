@@ -1,0 +1,76 @@
+name: Build WinEXE X11 presenter
+
+# ARM-only. Do not compile the FPGA core here.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "scripts/ss1-winexe-x11-present.c"
+      - ".github/workflows/build-winexe-presenter.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  compile-arm-presenter:
+    name: Cross-compile ss1-winexe-x11-present
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install armhf gcc and X11 headers
+        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            gcc-arm-linux-gnueabihf libc6-dev-armhf-cross \
+            libx11-dev libxext-dev libxfixes-dev \
+            wget ca-certificates binutils xz-utils
+
+      - name: Fetch Bullseye armhf X11 link libs + dummy driver
+        run: |
+          set -euo pipefail
+          SNAP=https://snapshot.debian.org/archive/debian/20220419T021707Z/pool/main
+          mkdir -p debs extract
+          wget -q -P debs \
+            "$SNAP/libx/libx11/libx11-6_1.7.2-1_armhf.deb" \
+            "$SNAP/libx/libxext/libxext6_1.3.3-1.1_armhf.deb" \
+            "$SNAP/libx/libxfixes/libxfixes3_5.0.3-2_armhf.deb" \
+            "$SNAP/libx/libxcb/libxcb1_1.14-3_armhf.deb" \
+            "$SNAP/libx/libxau/libxau6_1.0.9-1_armhf.deb" \
+            "$SNAP/libx/libxdmcp/libxdmcp6_1.1.2-3_armhf.deb" \
+            "$SNAP/libb/libbsd/libbsd0_0.11.3-1_armhf.deb" \
+            "$SNAP/libm/libmd/libmd0_1.0.3-3_armhf.deb" \
+            "$SNAP/x/xserver-xorg-video-dummy/xserver-xorg-video-dummy_0.3.8-1.1_armhf.deb"
+          for deb in debs/*.deb; do
+            dpkg-deb -x "$deb" extract
+          done
+          find extract -name 'dummy_drv.so' -print
+          cp -a extract/usr/lib/xorg/modules/drivers/dummy_drv.so dummy_drv.so
+          file dummy_drv.so
+
+      - name: Build ss1-winexe-x11-present
+        run: |
+          set -euo pipefail
+          LIBDIR=$(find extract -type d -name arm-linux-gnueabihf | head -1)
+          arm-linux-gnueabihf-gcc -O2 -Wall \
+            -o ss1-winexe-x11-present scripts/ss1-winexe-x11-present.c \
+            -I/usr/include \
+            -L"$LIBDIR" -lX11 -lXext -lXfixes \
+            -Wl,-rpath,/media/fat/Windows/x11/lib
+          arm-linux-gnueabihf-size ss1-winexe-x11-present
+          arm-linux-gnueabihf-readelf -d ss1-winexe-x11-present | grep NEEDED
+          file ss1-winexe-x11-present
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ss1-winexe-x11-present
+          path: ss1-winexe-x11-present
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dummy_drv.so
+          path: dummy_drv.so
+          if-no-files-found: error
