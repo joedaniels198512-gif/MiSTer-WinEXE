@@ -33,16 +33,18 @@ jobs:
           set -euo pipefail
           SNAP=https://snapshot.debian.org/archive/debian/20220419T021707Z/pool/main
           mkdir -p debs extract
-          wget -q -P debs \
-            "$SNAP/libx/libx11/libx11-6_1.7.2-1_armhf.deb" \
-            "$SNAP/libx/libxext/libxext6_1.3.3-1.1_armhf.deb" \
-            "$SNAP/libx/libxfixes/libxfixes3_5.0.3-2_armhf.deb" \
-            "$SNAP/libx/libxcb/libxcb1_1.14-3_armhf.deb" \
-            "$SNAP/libx/libxau/libxau6_1.0.9-1_armhf.deb" \
-            "$SNAP/libx/libxdmcp/libxdmcp6_1.1.2-3_armhf.deb" \
-            "$SNAP/libb/libbsd/libbsd0_0.11.3-1_armhf.deb" \
-            "$SNAP/libm/libmd/libmd0_1.0.3-3_armhf.deb" \
-            "$SNAP/x/xserver-xorg-video-dummy/xserver-xorg-video-dummy_0.3.8-1.1_armhf.deb"
+          UA="ss1-winexe-presenter/1.0"
+          fetch() { wget -q --user-agent="$UA" -P debs "$1"; }
+          fetch "$SNAP/libx/libx11/libx11-6_1.7.2-1_armhf.deb"
+          fetch "$SNAP/libx/libxext/libxext6_1.3.3-1.1_armhf.deb"
+          fetch "$SNAP/libx/libxfixes/libxfixes3_5.0.3-2_armhf.deb"
+          fetch "$SNAP/libx/libxcb/libxcb1_1.14-3_armhf.deb"
+          fetch "$SNAP/libx/libxau/libxau6_1.0.9-1_armhf.deb"
+          fetch "$SNAP/libx/libxdmcp/libxdmcp6_1.1.2-3_armhf.deb"
+          fetch "$SNAP/libb/libbsd/libbsd0_0.11.3-1_armhf.deb"
+          fetch "$SNAP/libm/libmd/libmd0_1.0.3-3_armhf.deb"
+          fetch "$SNAP/x/xserver-xorg-video-dummy/xserver-xorg-video-dummy_0.3.8-1+b1_armhf.deb"
+          ls -l debs
           for deb in debs/*.deb; do
             dpkg-deb -x "$deb" extract
           done
