@@ -63,7 +63,7 @@ jobs:
           arm-linux-gnueabihf-gcc -O2 -Wall \
             -o ss1-winexe-x11-present scripts/ss1-winexe-x11-present.c \
             -I/usr/include \
-            -L"$LIBDIR" -lX11 -lXext -lXfixes \
+            -L"$LIBDIR" -Wl,-rpath-link,"$LIBDIR" -lX11 -lXext -lXfixes \
             -Wl,-rpath,/media/fat/Windows/x11/lib
           arm-linux-gnueabihf-size ss1-winexe-x11-present
           arm-linux-gnueabihf-readelf -d ss1-winexe-x11-present | grep NEEDED
