@@ -6,7 +6,7 @@ WIN="${WIN:-/media/fat/Windows}"
 BOX86="${BOX86:-$WIN/box86-ss1/box86-gstflow}"
 WINEELF="$WIN/wine-installer/opt/wine-devel/bin/wine"
 EXE="${EXE:-$WIN/bin/ss1-winexe-dshow.exe}"
-LOG="${LOG:-$WIN/logs/ss1-winexe-dshow.log}"
+LOG="${LOG:-$WIN/logs/ss1-winexe-dshow-waveout.log}"
 PREFIX="${WINEPREFIX:-$WIN/wineprefix-prebuilt}"
 
 mem() {
@@ -68,7 +68,7 @@ export WINESERVER="${WINESERVER:-$WIN/bin/wineserver}"
 export WINEDLLOVERRIDES="winemenubuilder.exe=d;mshtml=d;ieframe=d"
 export FONTCONFIG_PATH="${FONTCONFIG_PATH:-$WIN/host-libs/etc/fonts}"
 export FONTCONFIG_FILE="${FONTCONFIG_FILE:-$WIN/host-libs/etc/fonts/fonts.conf}"
-export WINEDEBUG="${WINEDEBUG:-+err}"
+export WINEDEBUG="${WINEDEBUG:-+err,+winmm}"
 export BOX86_NOBANNER=1
 export BOX86_LOG="${BOX86_LOG:-0}"
 export BOX86_LD_LIBRARY_PATH="/media/fat/Windows/box86-extracted/usr/lib/box86-i386-linux-gnu:/media/fat/Windows/wine-installer/opt/wine-devel/lib:/media/fat/Windows/wine-installer/opt/wine-devel/lib/wine/i386-unix"

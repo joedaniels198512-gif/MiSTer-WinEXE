@@ -17,6 +17,134 @@ static int utf8_to_wide(const char *s, WCHAR *out, int nout)
     return MultiByteToWideChar(CP_ACP, 0, s, -1, out, nout);
 }
 static const WCHAR kWaveParser[] = L"{D51BD5A1-7548-11CF-A520-0080C77EF58A}";
+static const WCHAR kAudioRender[] = L"{E30629D1-27E5-11CE-875D-00608CB78066}";
+
+static IBaseFilter *find_filter_clsid(IGraphBuilder *gb, REFCLSID want)
+{
+    IEnumFilters *en = NULL;
+    IBaseFilter *f = NULL, *found = NULL;
+
+    if (FAILED(IGraphBuilder_EnumFilters(gb, &en)) || !en)
+        return NULL;
+    while (!found && IEnumFilters_Next(en, 1, &f, NULL) == S_OK && f) {
+        IPersist *persist = NULL;
+        CLSID id;
+        if (SUCCEEDED(IBaseFilter_QueryInterface(f, &IID_IPersist, (void **)&persist)) && persist) {
+            if (SUCCEEDED(IPersist_GetClassID(persist, &id)) && IsEqualGUID(&id, want))
+                found = f;
+            IPersist_Release(persist);
+        }
+        if (!found) {
+            IBaseFilter_Release(f);
+            f = NULL;
+        }
+    }
+    IEnumFilters_Release(en);
+    return found;
+}
+
+static IPin *find_pin(IBaseFilter *f, PIN_DIRECTION want, int must_connected)
+{
+    IEnumPins *en = NULL;
+    IPin *pin = NULL, *found = NULL;
+
+    if (!f || FAILED(IBaseFilter_EnumPins(f, &en)) || !en)
+        return NULL;
+    while (!found && IEnumPins_Next(en, 1, &pin, NULL) == S_OK && pin) {
+        PIN_DIRECTION dir = PINDIR_INPUT;
+        IPin *peer = NULL;
+        IPin_QueryDirection(pin, &dir);
+        if (dir == want) {
+            int conn = SUCCEEDED(IPin_ConnectedTo(pin, &peer)) && peer;
+            if (peer)
+                IPin_Release(peer);
+            if ((must_connected && conn) || (!must_connected && !conn))
+                found = pin;
+        }
+        if (!found) {
+            IPin_Release(pin);
+            pin = NULL;
+        }
+    }
+    IEnumPins_Release(en);
+    return found;
+}
+
+/* RenderFile picks DSound. Swap in quartz WaveOut (CLSID_AudioRender) and
+ * ConnectDirect so Intelligent Connect cannot put DSound back. */
+static HRESULT force_waveout(IGraphBuilder *gb)
+{
+    IBaseFilter *ds = NULL, *wo = NULL;
+    IPin *dsin = NULL, *split = NULL, *woin = NULL;
+    HRESULT hr;
+
+    hr = CoCreateInstance(&CLSID_AudioRender, NULL, CLSCTX_INPROC_SERVER,
+                          &IID_IBaseFilter, (void **)&wo);
+    print_hr("CLSID_AudioRender CoCreate", hr);
+    if (FAILED(hr) || !wo)
+        return hr;
+
+    ds = find_filter_clsid(gb, &CLSID_DSoundRender);
+    if (!ds) {
+        printf("FAIL no DirectSound renderer in graph\n");
+        IBaseFilter_Release(wo);
+        return E_FAIL;
+    }
+
+    dsin = find_pin(ds, PINDIR_INPUT, 1);
+    if (dsin) {
+        hr = IPin_ConnectedTo(dsin, &split);
+        print_hr("DSound ConnectedTo", hr);
+    }
+    if (dsin) {
+        hr = IGraphBuilder_Disconnect(gb, dsin);
+        print_hr("Disconnect DSound input", hr);
+    }
+    if (split) {
+        hr = IGraphBuilder_Disconnect(gb, split);
+        print_hr("Disconnect splitter output", hr);
+    }
+
+    hr = IGraphBuilder_RemoveFilter(gb, ds);
+    print_hr("RemoveFilter DSound", hr);
+    IBaseFilter_Release(ds);
+    if (dsin)
+        IPin_Release(dsin);
+
+    hr = IGraphBuilder_AddFilter(gb, wo, L"waveout");
+    print_hr("AddFilter WaveOut", hr);
+    if (FAILED(hr))
+        goto done;
+
+    woin = find_pin(wo, PINDIR_INPUT, 0);
+    if (!woin || !split) {
+        printf("FAIL WaveOut input or splitter output pin missing\n");
+        hr = E_FAIL;
+        goto done;
+    }
+    hr = IGraphBuilder_ConnectDirect(gb, split, woin, NULL);
+    print_hr("ConnectDirect splitter->WaveOut", hr);
+    if (FAILED(hr)) {
+        printf("FAIL refusing IGraphBuilder_Connect (would allow DSound again)\n");
+        goto done;
+    }
+    {
+        IBaseFilter *still = find_filter_clsid(gb, &CLSID_DSoundRender);
+        if (still) {
+            printf("FAIL DirectSound still in graph after WaveOut swap\n");
+            IBaseFilter_Release(still);
+            hr = E_FAIL;
+        }
+    }
+
+done:
+    if (woin)
+        IPin_Release(woin);
+    if (split)
+        IPin_Release(split);
+    IBaseFilter_Release(wo);
+    return hr;
+}
 
 static void print_hr(const char *label, HRESULT hr)
 {
@@ -143,6 +271,11 @@ int main(int argc, char **argv)
         CoUninitialize();
         return 3;
     }
+    hr = try_clsid("AudioRenderWaveOut", kAudioRender);
+    if (FAILED(hr)) {
+        CoUninitialize();
+        return 3;
+    }
 
     hr = CoCreateInstance(&CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER,
                           &IID_IGraphBuilder, (void **)&gb);
@@ -155,9 +288,19 @@ int main(int argc, char **argv)
     hr = IGraphBuilder_RenderFile(gb, wav, NULL);
     print_hr("RenderFile", hr);
     rc = hr;
+    printf("FILTERS after RenderFile (may include DirectSound)\n");
     enum_filters(gb);
     if (FAILED(hr))
         goto out;
+
+    hr = force_waveout(gb);
+    print_hr("force_waveout", hr);
+    printf("FILTERS after WaveOut swap\n");
+    enum_filters(gb);
+    if (FAILED(hr)) {
+        rc = hr;
+        goto out;
+    }
 
     IGraphBuilder_QueryInterface(gb, &IID_IMediaSeeking, (void **)&ms);
     IGraphBuilder_QueryInterface(gb, &IID_IMediaControl, (void **)&mc);
