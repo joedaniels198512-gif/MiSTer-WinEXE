@@ -46,8 +46,21 @@ assign FB_FORCE_BLANK = 1'b0;
 `endif
 
 `include "build_id.v"
+// Status bits (OSD only; not wired into video/audio RTL):
+//   [0]     T/R Reset
+//   [2:1]   Application: 0=Notepad 1=Paint 2=Winamp 2 3=SimCity 2000
+//   [3]     spare
+//   [4]     Launch
+//   [5]     Restart
+//   [6]     Stop
 localparam CONF_STR = {
-	"WinEXE_Test;;",
+	"WinEXE;;",
+	"-;",
+	"O[2:1],Application,Notepad,Paint,Winamp 2,SimCity 2000;",
+	"-;",
+	"T[4],Launch;",
+	"T[5],Restart;",
+	"T[6],Stop;",
 	"-;",
 	"T[0],Reset;",
 	"R[0],Reset and close OSD;",
