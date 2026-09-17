@@ -8,6 +8,13 @@ mkdir -p "$LOGDIR" /tmp/bin /tmp/xorg.conf.d
 
 stop_old_presentation() {
   # Leave the scripts on disk; just stop the parked fb0/n=1 path.
+  if [ -f /tmp/ss1-winexe-keep-input.pid ]; then
+    kill "$(cat /tmp/ss1-winexe-keep-input.pid)" 2>/dev/null || true
+    rm -f /tmp/ss1-winexe-keep-input.pid
+  fi
+  for pid in $(ps | awk '/ss1-winexe-keep-input/{print $1}'); do
+    kill "$pid" 2>/dev/null || true
+  done
   if [ -f /tmp/ss1-watchdog.pid ]; then
     kill "$(cat /tmp/ss1-watchdog.pid)" 2>/dev/null || true
     rm -f /tmp/ss1-watchdog.pid
@@ -32,13 +39,17 @@ stop_old_presentation() {
   for pid in $(ps | awk '/ss1-winexe-x11-present/{print $1}'); do
     kill "$pid" 2>/dev/null || true
   done
-  if [ -f /tmp/ss1-wine.pid ]; then
-    kill "$(cat /tmp/ss1-wine.pid)" 2>/dev/null || true
-    rm -f /tmp/ss1-wine.pid
+  if [ -x "$WIN/bin/ss1-winexe-stop-wine.sh" ]; then
+    "$WIN/bin/ss1-winexe-stop-wine.sh" || true
+  else
+    if [ -f /tmp/ss1-wine.pid ]; then
+      kill "$(cat /tmp/ss1-wine.pid)" 2>/dev/null || true
+      rm -f /tmp/ss1-wine.pid
+    fi
+    WINEPREFIX="${WINEPREFIX:-$WIN/wineprefix-prebuilt}"
+    export WINEPREFIX
+    "$WIN/bin/wineserver" -k 2>/dev/null || true
   fi
-  WINEPREFIX="${WINEPREFIX:-$WIN/wineprefix-prebuilt}"
-  export WINEPREFIX
-  "$WIN/bin/wineserver" -k 2>/dev/null || true
   "$WIN/bin/ss1-xorg.sh" stop >/dev/null 2>&1 || true
   sleep 1
 }
@@ -72,6 +83,10 @@ mkdir -p "$WIN/x11/etc/X11"
 cp "$WIN/bin/xorg.winexe.conf" "$WIN/x11/etc/X11/xorg.winexe.conf"
 
 "$WIN/bin/ss1-winexe-xorg.sh" start
+# Main grabs USB while a core is loaded; release mouse/keyboard for Xorg
+# and keep releasing them after OSD close (Main re-grabs on input_switch(-1)).
+"$WIN/bin/ss1-winexe-ungrab-input.sh"
+"$WIN/bin/ss1-winexe-keep-input.sh" watch
 export DISPLAY=:0
 export LD_LIBRARY_PATH="$WIN/x11/lib:$WIN/host-libs/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 "$WIN/x11/bin/xset" s off -dpms >/dev/null 2>&1 || true

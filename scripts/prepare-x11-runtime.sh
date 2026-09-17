@@ -16,6 +16,7 @@ ROOT="${X11_ROOT:-/media/fat/Windows/x11}"
 PACKAGE_URLS=(
   "https://snapshot.debian.org/archive/debian/20220419T021707Z/pool/main/x/xorg-server/xserver-xorg-core_1.20.11-1+deb11u1_armhf.deb"
   "https://snapshot.debian.org/archive/debian/20220419T021707Z/pool/main/x/xserver-xorg-video-fbdev/xserver-xorg-video-fbdev_0.5.0-1_armhf.deb"
+  "https://snapshot.debian.org/archive/debian/20220419T021707Z/pool/main/x/xserver-xorg-input-evdev/xserver-xorg-input-evdev_2.10.6-2_armhf.deb"
   "https://snapshot.debian.org/archive/debian/20220419T021707Z/pool/main/x/xorg-server/xserver-common_1.20.11-1+deb11u1_all.deb"
   "https://snapshot.debian.org/archive/debian/20220419T021707Z/pool/main/x/xorg/x11-common_7.7+22_all.deb"
   "https://snapshot.debian.org/archive/debian/20220419T021707Z/pool/main/x/x11-xkb-utils/x11-xkb-utils_7.7+5_armhf.deb"
@@ -243,11 +244,15 @@ if [ -d "$WORKDIR/extract/usr/share/fonts/X11/encodings" ]; then
   cp -a "$WORKDIR/extract/usr/share/fonts/X11/encodings" "$OUT_DIR/share/fonts/X11/encodings"
 fi
 
-# Relocatable xorg.conf aimed at MiSTer_fb /dev/fb0. No input devices yet.
+# Relocatable xorg.conf: fbdev /dev/fb0 plus static evdev for the physical
+# USB mouse/keyboard only. Do not AutoAdd — MiSTer virtual input and the
+# pico IR keyboard must stay with Main.
 cat > "$OUT_DIR/etc/X11/xorg.conf" <<EOF
 Section "ServerLayout"
     Identifier     "SuperStation"
     Screen         0 "Screen0"
+    InputDevice    "Mouse0" "CorePointer"
+    InputDevice    "Keyboard0" "CoreKeyboard"
 EndSection
 
 Section "Files"
@@ -261,6 +266,24 @@ Section "Module"
     Disable        "glamoregl"
     Disable        "dri"
     Disable        "dri2"
+    Load           "evdev"
+EndSection
+
+Section "InputDevice"
+    Identifier     "Mouse0"
+    Driver         "evdev"
+    Option         "Device" "/dev/input/event0"
+    Option         "GrabDevice" "false"
+EndSection
+
+Section "InputDevice"
+    Identifier     "Keyboard0"
+    Driver         "evdev"
+    Option         "Device" "/dev/input/event1"
+    Option         "GrabDevice" "false"
+    Option         "XkbRules" "evdev"
+    Option         "XkbModel" "pc105"
+    Option         "XkbLayout" "us"
 EndSection
 
 Section "ServerFlags"
@@ -269,7 +292,7 @@ Section "ServerFlags"
     Option         "AutoAddGPU" "false"
     Option         "AllowMouseOpenFail" "true"
     Option         "DontZap" "false"
-    Option         "XkbDisable" "true"
+    Option         "XkbDisable" "false"
 EndSection
 
 Section "Device"
@@ -305,7 +328,7 @@ glibc_target=2.31
 created_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 root=$ROOT
 display_target=/dev/fb0 MiSTer_fb 1920x1080x32
-omitted=libgl1-mesa-dri libllvm11 mesa-vulkan-drivers xserver-xorg-input-* cpp-10
+omitted=libgl1-mesa-dri libllvm11 mesa-vulkan-drivers xserver-xorg-input-libinput cpp-10
 winex11_client_libs=libX11 libXext libXfixes libXcursor libXi libGL libvulkan libXcomposite libXinerama libXrender libXrandr libXxf86vm
 notes=Do not install into /usr. Launch with scripts/ss1-xorg.sh. Do not change Wine/Box86/prefix.
 packages=${PACKAGE_URLS[*]}

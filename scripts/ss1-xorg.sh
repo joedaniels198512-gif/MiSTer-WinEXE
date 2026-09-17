@@ -60,7 +60,9 @@ cmd_start() {
   fi
 
   # Root, no logind, no VT grab beyond the existing framebuffer.
-  "$XORG" ":${DISPLAY_NUM}" \
+  # setsid: survive SSH hangup. stdout/stderr kept (Xorg also writes -logfile).
+  STDOUT_LOG="${XORG_STDOUT_LOG:-/media/fat/Windows/logs/xorg-stdout.log}"
+  setsid "$XORG" ":${DISPLAY_NUM}" \
     -config "$X11/etc/X11/xorg.conf" \
     -configdir /tmp/xorg.conf.d \
     -modulepath "$X11/lib/xorg/modules" \
@@ -71,7 +73,7 @@ cmd_start() {
     -novtswitch \
     -sharevts \
     vt1 \
-    >/dev/null 2>&1 &
+    </dev/null >>"$STDOUT_LOG" 2>&1 &
   echo $! > /tmp/ss1-xorg.pid
 
     i=0

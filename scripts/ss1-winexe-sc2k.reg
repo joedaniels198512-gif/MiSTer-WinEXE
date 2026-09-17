@@ -1,0 +1,82 @@
+REGEDIT4
+
+; Installer-equivalent keys from WIN95/SETUP.INS (InstallShield 3).
+; Not sc2kfix. Paths match C:\SC2K on the existing WinEXE prefix.
+
+[HKEY_CURRENT_USER\Software\Maxis]
+
+[HKEY_CURRENT_USER\Software\Maxis\SimCity 2000]
+
+[HKEY_CURRENT_USER\Software\Maxis\SimCity 2000\Localize]
+"Language"="USA"
+
+[HKEY_CURRENT_USER\Software\Maxis\SimCity 2000\Options]
+"Speed"=dword:00000001
+"Sound"=dword:00000001
+"Music"=dword:00000001
+"AutoGoto"=dword:00000001
+"AutoBudget"=dword:00000000
+"Disasters"=dword:00000001
+"AutoSave"=dword:00000000
+
+[HKEY_CURRENT_USER\Software\Maxis\SimCity 2000\Paths]
+"Home"="C:\\SC2K"
+"Graphics"="C:\\SC2K\\Bitmaps"
+"Music"="C:\\SC2K\\Sounds"
+"Data"="C:\\SC2K\\Data"
+"Goodies"="C:\\SC2K"
+"Cities"="C:\\SC2K\\Cities"
+"SaveGame"="C:\\SC2K\\Cities"
+"TileSets"="C:\\SC2K\\ScurkArt"
+"Scenarios"="C:\\SC2K\\Scenario"
+
+[HKEY_CURRENT_USER\Software\Maxis\SimCity 2000\Registration]
+"Mayor Name"="Mayor McSim"
+"Company Name"="Maxis, Inc."
+
+[HKEY_CURRENT_USER\Software\Maxis\SimCity 2000\Version]
+"SimCity 2000"=dword:00000100
+"SCURK"=dword:00000100
+
+[HKEY_CURRENT_USER\Software\Maxis\SimCity 2000\Windows]
+"Display"="8 1"
+"Color Check"=dword:00000000
+
+[HKEY_CURRENT_USER\Software\Maxis\SimCity 2000\SCURK]
+"CycleColors"=dword:00000001
+"GridHeight"=dword:00000002
+"GridWidth"=dword:00000002
+"ShowClipRegion"=dword:00000000
+"ShowDrawGrid"=dword:00000000
+"SnapToGrid"=dword:00000000
+"Sound"=dword:00000001
+
+[HKEY_LOCAL_MACHINE\Software\Maxis]
+
+[HKEY_LOCAL_MACHINE\Software\Maxis\SimCity 2000]
+
+[HKEY_LOCAL_MACHINE\Software\Maxis\SimCity 2000\Localize]
+"Language"="USA"
+
+[HKEY_LOCAL_MACHINE\Software\Maxis\SimCity 2000\Paths]
+"Home"="C:\\SC2K"
+"Graphics"="C:\\SC2K\\Bitmaps"
+"Music"="C:\\SC2K\\Sounds"
+"Data"="C:\\SC2K\\Data"
+"Goodies"="C:\\SC2K"
+"Cities"="C:\\SC2K\\Cities"
+"SaveGame"="C:\\SC2K\\Cities"
+"TileSets"="C:\\SC2K\\ScurkArt"
+"Scenarios"="C:\\SC2K\\Scenario"
+
+[HKEY_LOCAL_MACHINE\Software\Maxis\SimCity 2000\Registration]
+"Mayor Name"="Mayor McSim"
+"Company Name"="Maxis, Inc."
+
+[HKEY_LOCAL_MACHINE\Software\Maxis\SimCity 2000\Version]
+"SimCity 2000"=dword:00000100
+"SCURK"=dword:00000100
+
+[HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\App Paths\SimCity.exe]
+@="C:\\SC2K\\SIMCITY.EXE"
+"Path"="C:\\SC2K"

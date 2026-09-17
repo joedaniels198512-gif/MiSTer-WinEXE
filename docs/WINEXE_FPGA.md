@@ -1,11 +1,30 @@
 # WinEXE_Test FPGA core
 
 Status: sources in `fpga/`. Quartus 17.0 compile is GitHub Actions
-(`.github/workflows/build-winexe-core.yml`), not local.
+(`.github/workflows/build-winexe-core.yml`), not local. Colour-bar HDMI
+and the Wine GUI path are **proven**. FPGA timing/video is frozen.
 
 This core’s only job is a linear RGB framebuffer that the ARM side writes
-and the FPGA/MiSTer scaler displays. DVD MPEG/YUV, Paint, DirectDraw,
-audio, and CRT options are out of scope.
+and the FPGA/MiSTer scaler displays. Do not add DVD MPEG/YUV, DirectDraw
+acceleration, or CRT options to the RBF.
+
+## Current runtime (2026-09-17)
+
+Proven on SuperStation One through this core: XP Notepad, XP Paint,
+Winamp 2.91 (physical audio + MP3), original Win95 SimCity 2000, USB
+mouse/keyboard, OSD input recovery. SC2K uses a 30 Hz presenter profile
+with skip-unchanged and 32×32 dirty spans; other apps stay at 60 Hz.
+The SC2K tool palette is kept above the map by
+`scripts/ss1-winexe-sc2k-toolbar.sh` (X restack only; no FPGA change).
+
+```
+Wine / winex11
+    → Xorg 1.20.11 + xf86-video-dummy 640×480 RAM FB
+       + evdev (event0 mouse, event1 keyboard, GrabDevice false)
+    → ss1-winexe-x11-present (MIT-SHM + XFixes cursor; optional skip/dirty)
+    → /dev/mem 0x30000000 BGRX stride 2560
+    → WinEXE_Test.rbf ascal → HDMI
+```
 
 ## Why not the parked Xorg/HPS path
 
@@ -154,19 +173,147 @@ Wine / winex11
 Xvfb was rejected because it has no native USB evdev path. Dummy keeps
 the proven input stack and never opens MiSTer_fb.
 
-Launcher: `scripts/ss1-winexe-notepad.sh`
+Launcher (brings the stack up): `scripts/ss1-winexe-notepad.sh`
+Next EXE on a live stack (Paint default): `scripts/ss1-winexe-run-exe.sh`
 Presenter: GHA `.github/workflows/build-winexe-presenter.yml` (ARM only).
+Winamp: `scripts/ss1-winexe-winamp.sh` (existing stack; stamps first-run/Gecko settings first).
+SimCity 2000: `scripts/ss1-winexe-sc2k.sh` (registry stamp + 30 Hz dirty profile + toolbar watcher).
+
+## Presenter profiles (ARM only)
+
+`scripts/ss1-winexe-x11-present.c` / `ss1-winexe-present-restart.sh`.
+HDMI and dummy X stay 60 Hz. Env:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `SS1_HZ` | 60 | ARM present pace (SC2K uses 30) |
+| `SS1_SKIP_UNCHANGED` | 1 | Skip uncached DDR memcpy when the composed frame matches the previous |
+| `SS1_DIRTY` | 0 | SC2K: 1 — copy only coalesced dirty tiles |
+| `SS1_TILE_W` / `SS1_TILE_H` | 32 / 32 | Dirty tile size |
+| `SS1_DIRTY_PCT` | 60 | Full-frame fallback if dirty coverage ≥ this % |
+
+Cursor movement counts as a change. Do not enable dirty globally; Winamp/Notepad/Paint keep `SS1_DIRTY=0`.
+
+## SimCity 2000
+
+Stage the original Win95 `WIN95/SC2K/` tree to `C:\SC2K\` (outside Program
+Files so saves resolve). Do not commit the game. First launch needs the
+installer registry from `WIN95/SETUP.INS`, stamped by
+`ss1-winexe-sc2k-config.sh` + `ss1-winexe-sc2k.reg` (not sc2kfix, not
+`SETUP.EXE`).
+
+SC2K profile on launch:
+
+- presenter 30 Hz, skip on, dirty 32×32
+- `taskset` SIMCITY.EXE → CPU0, Xorg + presenter → CPU1
+- Explorer `/desktop=ss1,640x480` (no-Explorer A/B failed: dummy X has no WM)
+- `ss1-winexe-sc2k-toolbar.sh` restacks the 96×393 tool palette above the
+  city map without activating it; menus/dialogs above the map are left alone
+
+Switch apps with `ss1-winexe-stop-wine.sh` first (keeps FPGA, dummy X,
+presenter, keep-input). Winamp/run-exe restore 60 Hz, dirty off, and
+unpin presenter/Xorg (`taskset 0x3`).
+
+## Winamp 2.91 first-run + mini-browser
+
+Do **not** click the User information dialog each launch. Winamp 2.91
+remembers that state here:
+
+| Setting | File | Meaning |
+|---|---|---|
+| `[WinampReg] NeedReg=0` | `%windir%\winamp.ini` → `drive_c/windows/winamp.ini` | Skip **Winamp Setup: User information**. The exe reads this with `GetPrivateProfile` on `WinampReg` / `NeedReg` / `winamp.ini` (Windows directory, **not** Program Files). Missing key → show dialog. `noaod=1` in Program Files `Winamp.ini` is **not** this dialog (2.91 `winamp.exe` has no `noaod` string). |
+| `[WinampReg] ID=…` | same file | Install id Winamp already wrote; keep it. |
+| `mb_open=0` | `Program Files\Winamp\Winamp.ini` `[Winamp]` | Do not open the HTML mini-browser (`winampmb.htm` / ieframe). |
+| `newverchk=0` / `newverchk2=0` | same | Disable version check / anonymous-stats nag. |
+| Wine `AppDefaults\winamp.exe\DllOverrides` `mshtml`/`ieframe`/`shdocvw`=`disabled` plus launcher `WINEDLLOVERRIDES=…;mshtml=d;ieframe=d;shdocvw=d` | prefix `user.reg` + `ss1-winexe-winamp.sh` | Wine must not download/install **Gecko**. Do not install Gecko unless a later playback feature actually needs HTML. |
+
+Stamp (wineserver stopped) then launch:
+
+```
+/media/fat/Windows/bin/ss1-winexe-winamp-config.sh
+/media/fat/Windows/bin/ss1-winexe-winamp.sh
+```
+
+Bake the same `NeedReg=0` file and AppDefaults into the prebuilt WinEXE
+Winamp prefix so a fresh unzip does not show the nags.
+
+## Input ownership (USB vs MiSTer Main)
+
+A loaded core leaves Main's `grabbed = 1`. Every OSD open **and close**
+calls `user_io_osd_key_enable()` → `input_switch(-1)`, which does:
+
+```
+ioctl(fd, EVIOCGRAB, (grabbed | user_io_osd_is_visible()) ? 1 : 0);
+```
+
+in `Main_MiSTer/input.cpp` (`input_switch`, and the same ioctl when a
+device is first opened). After OSD close, `osd_visible` is 0 but
+`grabbed` is still 1, so event0/event1 are exclusive again and dummy
+Xorg (fds still open, `GrabDevice false`) receives nothing.
+
+Prototype workaround (no Main rebuild): `ss1-winexe-keep-input.sh watch`
+gdb-`EVIOCGRAB 0` on **only** `/dev/input/event0` (Pixart) and
+`event1` (SIGMA) while `/tmp/CORENAME` starts with `WinEXE`, skipping
+that while `/tmp/OSD_VISIBLE` exists. Pico IR `event4`/`event5` stay
+grabbed so OSD still has a controller.
+
+### Long-term Main change (do this in Main_MiSTer, not the RBF)
+
+When the running core name starts with `WinEXE` (or a future cfg flag
+such as `linux_input=1`):
+
+1. **Do not** `EVIOCGRAB` the Linux-owned USB mouse/keyboard while the
+   OSD is hidden. Keep grabbing TinyUSB pico IR (and gamepads) as today.
+2. On OSD **open**, grabbing those USB devices is allowed so the OSD can
+   use them if no IR is present.
+3. On OSD **close**, **do not** re-grab those USB devices; leave them to
+   Linux/Xorg. Today `input_switch(-1)` re-applies grab because
+   `grabbed` stays 1.
+4. Do **not** call `input_switch(0)` for this — that path is tied to
+   `video_fb_enable` / Linux n=0 HDMI, which steals the WinEXE scanout.
+
+Concrete hooks:
+
+- `input.cpp` `input_switch()` and the `ioctl(pool[n].fd, EVIOCGRAB, …)`
+  at device-open time: skip (or force 0) for configured linux-handoff
+  devices when `!user_io_osd_is_visible()`.
+- Identify devices by the existing `idstr` / VID:PID (Pixart `093a:2510`,
+  SIGMA `1c4f:008e`) or a `MiSTer.ini` list.
+- `user_io_osd_key_enable()` can stay the OSD visibility toggle; only
+  the grab predicate needs the WinEXE exception.
+
+Until that lands, keep the userland watcher. It must not be a manual gdb
+step after every OSD use.
 
 ## Files
 
 - `fpga/` — DVD `sys/` + 27 MHz PLL, `WinEXE.sv` / `.qsf` / `.qpf` / `.qip`
 - `.github/workflows/build-winexe-core.yml` — disk-free +
   `raetro/quartus:17.0` → `WinEXE_Test.rbf`
+- `.github/workflows/build-winexe-presenter.yml` — Debian Bullseye armhf
+  cross-build of `ss1-winexe-x11-present`
 - `scripts/ss1-winexe-present.c` — ARM BGRX colour-bar writer
-- `scripts/ss1-winexe-x11-present.c` — X dummy → `0x30000000` loop
+- `scripts/ss1-winexe-x11-present.c` — X dummy → `0x30000000` (60/30 Hz, skip, dirty)
+- `scripts/ss1-winexe-present-restart.sh` — restart presenter only
+- `scripts/ss1-winexe-xorg.sh` / `scripts/xorg.winexe.conf` — dummy 640×480 Xorg
+- `scripts/ss1-mount-prefix.sh` — loop-mount `wineprefix-prebuilt.ext4`
+- `scripts/ss1-winexe-stop-wine.sh` — comm-only Wine session cleanup
+- `scripts/ss1-winexe-ungrab-input.sh` / `ss1-winexe-keep-input.sh` — USB vs Main
 - `scripts/ss1-winexe-notepad.sh` — dummy Xorg + presenter + XP Notepad
+- `scripts/ss1-winexe-run-exe.sh` — Paint (default) or any `apps/*.exe` on the live stack
+- `scripts/ss1-winexe-winamp-config.sh` — `NeedReg=0` + `mb_open=0` + no Gecko
+- `scripts/ss1-winexe-winamp.sh` — stamp + launch Winamp 2.91 on existing stack
+- `scripts/ss1-winexe-sc2k-config.sh` / `ss1-winexe-sc2k.reg` — SETUP.INS registry
+- `scripts/ss1-winexe-sc2k.sh` — SC2K 30 Hz + dirty + affinity + Explorer desktop
+- `scripts/ss1-winexe-sc2k-toolbar.sh` — keep SC2K tool palette above the map
+- `scripts/ss1-winexe-mem-wine.sh` — targeted Wine RSS/PSS snapshot
 
-## Out of scope for this compile
+Parked HPS `/dev/fb0` helpers (not the live WinEXE path):
+`scripts/ss1-xorg.sh`, `scripts/ss1-fb-present.sh`, `scripts/ss1-notepad.sh`,
+`scripts/ss1-run-exe.sh`, `scripts/ss1-launch-notepad.sh`.
 
-Paint, Winamp, DirectDraw, audio, CRT, interlacing, scaler OSD, FPGA USB,
-n=1 presenter, changing Box86/Wine.
+## Out of scope for the FPGA compile
+
+DirectDraw acceleration, CRT, interlacing, scaler OSD, FPGA USB, n=1
+HPS presenter, changing Box86/Wine. Application launchers and the ARM
+presenter are software-only.

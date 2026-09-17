@@ -13,11 +13,16 @@ x11-runtime/
 *.zip
 artifacts/
 
-# User-supplied Windows binaries (drop on the SuperStation, do not commit)
-apps/*.exe
-apps/*.dll
-apps/*.bmp
-apps/*.com
+# User-supplied Windows binaries / extracted games (do not commit)
+apps/**
+!apps/README.md
+
+# Local presenter / FPGA extract leftovers and HDMI dumps
+.present-cross/
+logs/
+/ss1-winexe-x11-present
+/ss1-winexe-present
+*.raw
 
 # Local extract / build leftovers
 build-box86/

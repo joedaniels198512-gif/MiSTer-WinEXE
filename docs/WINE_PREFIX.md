@@ -45,5 +45,17 @@ Box86=/media/fat/Windows/box86-ss1/box86
 Wine=/media/fat/Windows/wine-installer/opt/wine-devel/bin/wine
 ```
 
+The SD card is exFAT, which cannot store prefix symlinks. On the device
+the working layout is a loop-mounted ext4 image:
+
+```
+/media/fat/Windows/wineprefix-prebuilt.ext4  →  /media/fat/Windows/wineprefix-prebuilt
+```
+
+`scripts/ss1-mount-prefix.sh` mounts it (`noatime`). Launchers call this
+after a power cycle; an empty mount-point directory with no image mounted
+looks like a missing `C:\SC2K\SIMCITY.EXE`.
+
 Do not overwrite `box86-ss1` or an existing on-device prefix. Extract the
-artifact to `wineprefix-prebuilt` (new directory).
+artifact to a new `wineprefix-prebuilt` directory, or refresh the ext4
+image, then remount.
