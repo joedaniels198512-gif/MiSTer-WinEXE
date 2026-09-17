@@ -20,8 +20,9 @@ user-supplied paths.
 | `Paint.wex` | `paint.ini` | XP Paint |
 | `Winamp 2.wex` | `winamp2.ini` | Winamp 2.91 |
 | `SimCity 2000.wex` | `sc2k.ini` | SimCity 2000 |
+| `Command & Conquer.wex` | `cnc.ini` | Command & Conquer Gold (stock C&C95.EXE) |
 
-`cnc.ini` exists for a later DirectDraw probe; there is no `.WEX` yet.
+Game data and `CnC_NOD95.iso` stay on the SuperStation, not in git.
 `experimental/wmp9.ini` is parked (`menu=0`).
 
 SSH:
