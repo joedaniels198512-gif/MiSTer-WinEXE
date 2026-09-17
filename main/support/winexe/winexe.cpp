@@ -90,17 +90,46 @@ static int winexe_spawn(const char *arg1, const char *arg2)
 	_exit(127);
 }
 
+static void winexe_on_exit(void)
+{
+	/* Detached. shutdown-guard aborts if CORENAME is still WinEXE (Main restart). */
+	winexe_spawn("shutdown-guard", NULL);
+}
+
 void winexe_init()
 {
 	if (!is_winexe()) return;
 
-	printf("WinEXE: ARM profile core, idle until Load Application\n");
-	winexe_spawn("idle", NULL);
+	atexit(winexe_on_exit);
+	printf("WinEXE: boot warm Wine runtime\n");
+	winexe_spawn("boot", NULL);
 }
 
 void winexe_poll()
 {
-	// T pulses are observed in winexe_status_event(); .WEX in winexe_wex_selected().
+	static int unloaded = 0;
+	FILE *f;
+	char name[64];
+	char *nl;
+
+	if (unloaded || !is_winexe()) return;
+
+	f = fopen("/tmp/CORENAME", "r");
+	if (!f) return;
+	if (!fgets(name, sizeof name, f))
+	{
+		fclose(f);
+		return;
+	}
+	fclose(f);
+	nl = strchr(name, '\n');
+	if (nl) *nl = 0;
+	if (name[0] && strcasecmp(name, "WinEXE") && strcasecmp(name, "WinEXE_Test"))
+	{
+		unloaded = 1;
+		printf("WinEXE: core became %s, shutdown\n", name);
+		winexe_spawn("shutdown", NULL);
+	}
 }
 
 void winexe_wex_selected(const char *path)
@@ -125,7 +154,7 @@ void winexe_status_event(const char *opt, uint32_t value)
 	}
 	else if (start == 6)
 	{
-		printf("WinEXE: Stop -> idle\n");
-		winexe_spawn("idle", NULL);
+		printf("WinEXE: Stop -> app only\n");
+		winexe_spawn("stop", NULL);
 	}
 }

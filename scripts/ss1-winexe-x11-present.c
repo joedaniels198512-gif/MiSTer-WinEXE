@@ -432,6 +432,12 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	root = DefaultRootWindow(dpy);
+	printf("XShmGetImage drawable=0x%lx (DefaultRootWindow) %dx%d depth=%d — capture target unchanged\n",
+	       (unsigned long)root,
+	       DisplayWidth(dpy, DefaultScreen(dpy)),
+	       DisplayHeight(dpy, DefaultScreen(dpy)),
+	       DefaultDepth(dpy, DefaultScreen(dpy)));
+	fflush(stdout);
 	if (DisplayWidth(dpy, DefaultScreen(dpy)) != FB_W
 	    || DisplayHeight(dpy, DefaultScreen(dpy)) != FB_H) {
 		fprintf(stderr, "warning: X size %dx%d, FPGA FB is %dx%d\n",

@@ -67,6 +67,24 @@ if "winexe_init()" not in cpp:
     cpp = cpp2
     print("patched user_io.cpp winexe_init")
 
+if cpp.count("winexe_poll()") < 1:
+    cpp2, n = re.subn(
+        r"(if \(is_x86\(\)\) x86_poll\(\);\r?\n)",
+        r"\1\tif (is_winexe()) winexe_poll();\n",
+        cpp,
+        count=1,
+    )
+    if n != 1:
+        cpp2, n = re.subn(
+            r"(check_status_change\(\);\r?\n)",
+            r"\1\t\tif (is_winexe()) winexe_poll();\n",
+            cpp,
+            count=1,
+        )
+    must(n == 1, "user_io.cpp: winexe_poll() insertion point not found")
+    cpp = cpp2
+    print("patched user_io.cpp winexe_poll")
+
 if "winexe_status_event" not in cpp:
     m = re.search(
         r"spi_uio_cmd_cont\(UIO_SET_STATUS2\);.*?DisableIO\(\);\n[ \t]*\}\n\}",
@@ -112,4 +130,5 @@ echo "WinEXE hook applied in $MAIN"
 grep -q 'user_io_get_confstr' "$MAIN/user_io.cpp"
 grep -q 'winexe_status_event' "$MAIN/user_io.cpp"
 grep -q 'winexe_wex_selected' "$MAIN/user_io.cpp"
+grep -q 'winexe_poll' "$MAIN/user_io.cpp" || echo "note: winexe_poll call site missing (atexit shutdown still applied)"
 wc -l "$MAIN/user_io.cpp"

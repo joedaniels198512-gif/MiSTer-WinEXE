@@ -20,6 +20,8 @@ mkdir -p \
   "$ROOT/_Console"
 
 cp -f "$REPO"/scripts/ss1-winexe-*.sh "$WIN/bin/" 2>/dev/null || true
+cp -f "$REPO"/scripts/ss1-winexe-wex-trace.py "$WIN/bin/" 2>/dev/null || true
+chmod +x "$WIN/bin/ss1-winexe-wex-trace.py" 2>/dev/null || true
 cp -f "$REPO"/scripts/ss1-winexe-*.reg "$WIN/bin/" 2>/dev/null || true
 chmod +x "$WIN"/bin/ss1-winexe-*.sh 2>/dev/null || true
 
