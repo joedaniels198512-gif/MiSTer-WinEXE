@@ -17,9 +17,9 @@ DEFINE_GUID(CLSID_SS1WaveOut,
 #define SS1_WO_PIN_NAME    L"Audio Input"
 #define SS1_WO_PIN_ID      L"in"
 
-#define SS1_WO_BUFFERS       8
-#define SS1_WO_BUFFER_MS     20
-#define SS1_WO_PRIME_BUFFERS 6
+#define SS1_WO_BUFFERS       12
+#define SS1_WO_BUFFER_MS     30
+#define SS1_WO_PRIME_BUFFERS 9
 
 #define SS1_WO_DLL_NAME   "ss1waveout.ax"
 

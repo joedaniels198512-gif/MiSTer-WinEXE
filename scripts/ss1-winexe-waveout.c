@@ -99,16 +99,91 @@ struct SS1Filter {
     LONG starve;
     LONG recv_count;
     LONG done_count;
+    LONG write_count;
+    LONG bytes_received;
     LONG bytes_written;
+    LONG bytes_completed;
+    LONG bytes_dropped;
     BOOL eos_waiting;
     BOOL released;
-    DWORD t_first_recv;
-    DWORD t_first_write;
-    DWORD t_release;
+    LONGLONG t0_ms;
+    LONGLONG t_first_recv;
+    LONGLONG t_first_write;
+    LONGLONG t_release;
+    LONGLONG t_last_recv;
+    LONGLONG max_recv_gap;
+    LONG gap40;
+    LONG gap80;
+    LONG gap120;
+    LONG gap200;
+    LONG wait_free_count;
+    LONG inflight_zero;
+    LONG inflight_le1;
+    LONG inflight_le2;
     LONG min_in_flight;
 };
 
-static HRESULT ss1_create(IUnknown *outer, IBaseFilter **out);
+static LONGLONG g_qpc_freq;
+
+static LONGLONG now_ms(void)
+{
+    LARGE_INTEGER t, f;
+    QueryPerformanceCounter(&t);
+    if (!g_qpc_freq) {
+        QueryPerformanceFrequency(&f);
+        g_qpc_freq = f.QuadPart ? f.QuadPart : 1;
+    }
+    return (t.QuadPart * 1000) / g_qpc_freq;
+}
+
+static int count_free_unlocked(SS1Filter *f)
+{
+    UINT i;
+    int n = 0;
+    for (i = 0; i < f->nbufs; i++) {
+        if (!f->busy[i])
+            n++;
+    }
+    return n;
+}
+
+static int in_fail_window(SS1Filter *f, LONGLONG now)
+{
+    LONGLONG dt;
+    if (!f->released || !f->t_release)
+        return 0;
+    dt = now - f->t_release;
+    return (dt >= 15000 && dt <= 25000);
+}
+
+static LONGLONG wave_pos_ms(SS1Filter *f)
+{
+    MMTIME mmt;
+    if (!f->hwo || !f->fmt.nAvgBytesPerSec)
+        return -1;
+    memset(&mmt, 0, sizeof mmt);
+    mmt.wType = TIME_BYTES;
+    if (waveOutGetPosition(f->hwo, &mmt, sizeof mmt) != MMSYSERR_NOERROR)
+        return -1;
+    if (mmt.wType != TIME_BYTES)
+        return -1;
+    return ((LONGLONG)mmt.u.cb * 1000) / f->fmt.nAvgBytesPerSec;
+}
+
+static void note_inflight(SS1Filter *f)
+{
+    LONG inf = f->in_flight;
+    if (!f->released)
+        return;
+    if (inf < f->min_in_flight)
+        f->min_in_flight = inf;
+    if (inf <= 0)
+        f->inflight_zero++;
+    if (inf <= 1)
+        f->inflight_le1++;
+    if (inf <= 2)
+        f->inflight_le2++;
+}
 
 static inline SS1Filter *f_from_base(IBaseFilter *iface)
 {
@@ -225,46 +300,46 @@ static void CALLBACK wo_proc(HWAVEOUT hwo, UINT msg, DWORD_PTR inst,
     SS1Filter *f = (SS1Filter *)inst;
     WAVEHDR *hdr;
     UINT i;
-    LONG done;
+    LONG done, inf_before, inf_after, completed;
+    LONGLONG now, dt, wpos;
+    int win, rel;
+    DWORD blen;
 
     (void)hwo;
     (void)p2;
     if (!f || msg != WOM_DONE)
         return;
     hdr = (WAVEHDR *)p1;
+    blen = hdr->dwBufferLength;
+    now = now_ms();
     EnterCriticalSection(&f->cs);
     i = (UINT)hdr->dwUser;
+    inf_before = f->in_flight;
     if (i < f->nbufs)
         f->busy[i] = FALSE;
     if (f->in_flight > 0)
         f->in_flight--;
+    inf_after = f->in_flight;
     done = ++f->done_count;
-    if (f->released && f->in_flight < f->min_in_flight)
-        f->min_in_flight = f->in_flight;
+    f->bytes_completed += (LONG)blen;
+    completed = f->bytes_completed;
+    note_inflight(f);
     if (f->eos_waiting && f->in_flight == 0)
         SetEvent(f->drain_ev);
     SetEvent(f->free_ev);
-    {
-        DWORD now = GetTickCount();
-        BOOL early = !f->released ||
-                     (f->t_release && (now - f->t_release) < 2000);
-        LONG inflight = f->in_flight;
-        LONG minfl = f->min_in_flight;
-        BOOL rel = f->released;
-        LeaveCriticalSection(&f->cs);
+    rel = f->released;
+    dt = f->t_release ? now - f->t_release : 0;
+    win = in_fail_window(f, now);
+    LeaveCriticalSection(&f->cs);
 
-        if (!rel)
-            logf("WOM_DONE_BEFORE_RELEASE n=%ld in_flight=%ld\n",
-                 (long)done, (long)inflight);
-        else {
-            DWORD every = ((now - f->t_release) < 2000) ? 1 : 50;
-            if (early || (done % every) == 0 || done <= 8)
-                logf("WOM_DONE n=%ld in_flight=%ld min=%ld dt=%lu\n",
-                     (long)done, (long)inflight, (long)minfl,
-                     (unsigned long)(f->t_release ? now - f->t_release : 0));
-        }
-        return;
-    }
+    wpos = (win || !rel) ? wave_pos_ms(f) : -1;
+    if (!rel)
+        logf("DONE_BEFORE_RELEASE n=%ld idx=%u infl=%ld->%ld bytes=%ld\n",
+             (long)done, i, (long)inf_before, (long)inf_after, (long)completed);
+    else
+        logf("DONE t=%lld dt=%lld idx=%u n=%ld infl=%ld->%ld bytes=%ld%s wpos=%lld\n",
+             now, dt, i, (long)done, (long)inf_before, (long)inf_after,
+             (long)completed, win ? " WIN" : "", wpos);
 }
 
 static void wo_free_buffers(SS1Filter *f)
@@ -375,17 +450,27 @@ static HRESULT wo_open(SS1Filter *f, const WAVEFORMATEX *wf)
     }
     f->in_flight = 0;
     f->done_count = 0;
+    f->write_count = 0;
+    f->bytes_received = 0;
     f->bytes_written = 0;
+    f->bytes_completed = 0;
+    f->bytes_dropped = 0;
     f->released = FALSE;
+    f->t0_ms = now_ms();
     f->t_first_recv = 0;
     f->t_first_write = 0;
     f->t_release = 0;
+    f->t_last_recv = 0;
+    f->max_recv_gap = 0;
+    f->gap40 = f->gap80 = f->gap120 = f->gap200 = 0;
+    f->wait_free_count = 0;
+    f->inflight_zero = f->inflight_le1 = f->inflight_le2 = 0;
     f->min_in_flight = 0;
     ResetEvent(f->drain_ev);
     SetEvent(f->free_ev);
     /* Stay paused until try_release() sees in_flight >= SS1_WO_PRIME_BUFFERS. */
     waveOutPause(f->hwo);
-    logf("waveOut paused; will release at in_flight>=%d (~%d ms)\n",
+    logf("waveOut paused; will release at in_flight>=%d (~%d ms) DIAG 12x30\n",
          SS1_WO_PRIME_BUFFERS, SS1_WO_PRIME_BUFFERS * SS1_WO_BUFFER_MS);
     return S_OK;
 }
@@ -393,6 +478,7 @@ static HRESULT wo_open(SS1Filter *f, const WAVEFORMATEX *wf)
 static int wait_free(SS1Filter *f, DWORD timeout)
 {
     DWORD start = GetTickCount();
+    int waited = 0;
     for (;;) {
         UINT i;
         EnterCriticalSection(&f->cs);
@@ -406,6 +492,10 @@ static int wait_free(SS1Filter *f, DWORD timeout)
                 LeaveCriticalSection(&f->cs);
                 return (int)i;
             }
+        }
+        if (!waited) {
+            f->wait_free_count++;
+            waited = 1;
         }
         LeaveCriticalSection(&f->cs);
         if (timeout != INFINITE && (GetTickCount() - start) >= timeout)
@@ -429,7 +519,7 @@ static void try_release(SS1Filter *f)
             f->released = TRUE;
             q = f->in_flight;
             eos = f->eos;
-            f->t_release = GetTickCount();
+            f->t_release = now_ms();
             f->min_in_flight = q;
         }
     }
@@ -437,60 +527,86 @@ static void try_release(SS1Filter *f)
     if (!do_it)
         return;
     waveOutRestart(f->hwo);
-    logf("playback released in_flight=%ld prime=%d dt_recv_ms=%lu dt_write_ms=%lu%s\n",
+    logf("playback released in_flight=%ld prime=%d dt_recv_ms=%lld dt_write_ms=%lld%s\n",
          (long)q, SS1_WO_PRIME_BUFFERS,
-         (unsigned long)(f->t_first_recv ? f->t_release - f->t_first_recv : 0),
-         (unsigned long)(f->t_first_write ? f->t_release - f->t_first_write : 0),
+         f->t_first_recv ? (f->t_release - f->t_first_recv) : 0,
+         f->t_first_write ? (f->t_release - f->t_first_write) : 0,
          eos ? " (EOS fallback)" : "");
 }
 
 static HRESULT write_pcm(SS1Filter *f, const BYTE *data, DWORD len)
 {
-    while (len) {
+    DWORD remain = len;
+    const BYTE *p = data;
+
+    while (remain) {
         int idx;
         DWORD chunk;
         MMRESULT mmr;
+        LONG inf_before, inf_after, submitted, nwrite;
+        LONGLONG now, dt, wpos;
+        int win;
 
         idx = wait_free(f, 2000);
         if (idx == -1) {
             InterlockedIncrement(&f->starve);
-            logf("STARVE waiting for WAVEHDR recv=%ld in_flight=%ld starve=%ld\n",
-                 (long)f->recv_count, (long)f->in_flight, (long)f->starve);
+            logf("STARVE waiting for WAVEHDR recv=%ld in_flight=%ld starve=%ld remain=%lu\n",
+                 (long)f->recv_count, (long)f->in_flight, (long)f->starve,
+                 (unsigned long)remain);
             idx = wait_free(f, INFINITE);
         }
-        if (idx < 0)
+        if (idx < 0) {
+            EnterCriticalSection(&f->cs);
+            f->bytes_dropped += (LONG)remain;
+            LeaveCriticalSection(&f->cs);
+            logf("WRITE_ABORT remain=%lu sample_len=%lu dropped_total=%ld\n",
+                 (unsigned long)remain, (unsigned long)len, (long)f->bytes_dropped);
             return S_FALSE;
+        }
 
-        chunk = len;
+        chunk = remain;
         if (chunk > f->buf_bytes)
             chunk = f->buf_bytes;
-        memcpy(f->buf[idx], data, chunk);
+        memcpy(f->buf[idx], p, chunk);
         f->hdr[idx].dwBufferLength = chunk;
         f->hdr[idx].dwFlags &= ~(WHDR_DONE | WHDR_INQUEUE);
         f->hdr[idx].dwFlags |= WHDR_PREPARED;
 
+        now = now_ms();
         if (!f->t_first_write) {
-            f->t_first_write = GetTickCount();
-            logf("first waveOutWrite tick=%lu len=%lu in_flight=%ld\n",
-                 (unsigned long)f->t_first_write, (unsigned long)chunk,
-                 (long)f->in_flight);
+            f->t_first_write = now;
+            logf("first waveOutWrite t=%lld len=%lu in_flight=%ld\n",
+                 now, (unsigned long)chunk, (long)f->in_flight);
         }
+        inf_before = f->in_flight;
         mmr = waveOutWrite(f->hwo, &f->hdr[idx], sizeof(WAVEHDR));
         if (mmr != MMSYSERR_NOERROR) {
-            logf("waveOutWrite mmr=%u idx=%d len=%lu\n", mmr, idx, (unsigned long)chunk);
+            logf("waveOutWrite mmr=%u idx=%d len=%lu remain=%lu\n",
+                 mmr, idx, (unsigned long)chunk, (unsigned long)remain);
             EnterCriticalSection(&f->cs);
             f->busy[idx] = FALSE;
+            f->bytes_dropped += (LONG)remain;
             SetEvent(f->free_ev);
             LeaveCriticalSection(&f->cs);
             return HRESULT_FROM_WIN32(mmr);
         }
         EnterCriticalSection(&f->cs);
         f->in_flight++;
+        f->write_count++;
         f->bytes_written += (LONG)chunk;
+        inf_after = f->in_flight;
+        nwrite = f->write_count;
+        submitted = f->bytes_written;
+        dt = f->t_release ? now - f->t_release : 0;
+        win = in_fail_window(f, now);
         LeaveCriticalSection(&f->cs);
+        wpos = win ? wave_pos_ms(f) : -1;
+        logf("WR t=%lld dt=%lld idx=%d n=%ld infl=%ld->%ld len=%lu sub=%ld%s wpos=%lld\n",
+             now, dt, idx, (long)nwrite, (long)inf_before, (long)inf_after,
+             (unsigned long)chunk, (long)submitted, win ? " WIN" : "", wpos);
         try_release(f);
-        data += chunk;
-        len -= chunk;
+        p += chunk;
+        remain -= chunk;
     }
     return S_OK;
 }
@@ -1264,9 +1380,9 @@ static HRESULT WINAPI pin_EndOfStream(IPin *iface)
     SS1Filter *f = f_from_pin(iface);
     DWORD wait_ms;
 
-    logf("EndOfStream in_flight=%ld bytes=%ld starve=%ld recv=%ld done=%ld\n",
-         (long)f->in_flight, (long)f->bytes_written, (long)f->starve,
-         (long)f->recv_count, (long)f->done_count);
+    logf("EndOfStream in_flight=%ld recv=%ld wr=%ld done=%ld\n",
+         (long)f->in_flight, (long)f->recv_count, (long)f->write_count,
+         (long)f->done_count);
     EnterCriticalSection(&f->cs);
     if (f->flushing) {
         LeaveCriticalSection(&f->cs);
@@ -1284,6 +1400,15 @@ static HRESULT WINAPI pin_EndOfStream(IPin *iface)
     logf("EOS drained in_flight=%ld done=%ld starve=%ld min_in_flight=%ld released=%d\n",
          (long)f->in_flight, (long)f->done_count, (long)f->starve,
          (long)f->min_in_flight, (int)f->released);
+    logf("PCM tally recv=%ld submitted=%ld completed=%ld dropped=%ld match=%s\n",
+         (long)f->bytes_received, (long)f->bytes_written, (long)f->bytes_completed,
+         (long)f->bytes_dropped,
+         (f->bytes_received == f->bytes_written && f->bytes_dropped == 0) ? "YES" : "NO");
+    logf("GAP max=%lld n>40=%ld n>80=%ld n>120=%ld n>200=%ld\n",
+         f->max_recv_gap, (long)f->gap40, (long)f->gap80, (long)f->gap120, (long)f->gap200);
+    logf("STAT wait_free=%ld infl0=%ld infl<=1=%ld infl<=2=%ld min=%ld\n",
+         (long)f->wait_free_count, (long)f->inflight_zero, (long)f->inflight_le1,
+         (long)f->inflight_le2, (long)f->min_in_flight);
 
     if (f->sink && f->state != State_Stopped) {
         HRESULT hr = IMediaEventSink_Notify(f->sink, EC_COMPLETE, S_OK,
@@ -1412,16 +1537,54 @@ static HRESULT WINAPI mem_Receive(IMemInputPin *iface, IMediaSample *sample)
     if (slen <= 0)
         return S_OK;
 
-    f->recv_count++;
-    if (f->recv_count == 1) {
-        f->t_first_recv = GetTickCount();
-        logf("first Receive tick=%lu len=%ld in_flight=%ld state=%d released=%d\n",
-             (unsigned long)f->t_first_recv, (long)slen, (long)f->in_flight,
-             (int)f->state, (int)f->released);
+    {
+        REFERENCE_TIME ts0 = -1, ts1 = -1;
+        LONGLONG now, gap = 0, dt = 0, wpos = -1;
+        LONG infl, nrecv, recvd;
+        int freeb, win;
+        HRESULT ts_hr;
+
+        now = now_ms();
+        ts_hr = IMediaSample_GetTime(sample, &ts0, &ts1);
+        if (FAILED(ts_hr)) {
+            ts0 = -1;
+            ts1 = -1;
+        }
+        EnterCriticalSection(&f->cs);
+        f->recv_count++;
+        f->bytes_received += slen;
+        if (!f->t_first_recv)
+            f->t_first_recv = now;
+        if (f->t_last_recv) {
+            gap = now - f->t_last_recv;
+            if (gap > f->max_recv_gap)
+                f->max_recv_gap = gap;
+            if (gap > 40)
+                f->gap40++;
+            if (gap > 80)
+                f->gap80++;
+            if (gap > 120)
+                f->gap120++;
+            if (gap > 200)
+                f->gap200++;
+        }
+        f->t_last_recv = now;
+        infl = f->in_flight;
+        freeb = count_free_unlocked(f);
+        nrecv = f->recv_count;
+        recvd = f->bytes_received;
+        dt = f->t_release ? now - f->t_release : 0;
+        win = in_fail_window(f, now);
+        LeaveCriticalSection(&f->cs);
+        if (win)
+            wpos = wave_pos_ms(f);
+        logf("RECV t=%lld dt=%lld gap=%lld len=%ld pcm=%ld infl=%ld free=%d ts0=%lld ts1=%lld%s wpos=%lld\n",
+             now, dt, gap, (long)slen, (long)recvd, (long)infl, freeb,
+             (long long)ts0, (long long)ts1, win ? " WIN" : "", wpos);
+        if (nrecv == 1)
+            logf("first Receive t=%lld len=%ld infl=%ld state=%d released=%d\n",
+                 now, (long)slen, (long)infl, (int)f->state, (int)f->released);
     }
-    if (f->recv_count <= 8 || (f->recv_count % 50) == 0)
-        logf("Receive n=%ld len=%ld in_flight=%ld released=%d\n",
-             (long)f->recv_count, (long)slen, (long)f->in_flight, (int)f->released);
 
     return write_pcm(f, ptr, (DWORD)slen);
 }

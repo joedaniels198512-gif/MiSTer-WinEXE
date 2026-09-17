@@ -76,7 +76,7 @@ export WINESERVER="${WINESERVER:-$WIN/bin/wineserver}"
 export WINEDLLOVERRIDES="winemenubuilder.exe=d;mshtml=d;ieframe=d"
 export FONTCONFIG_PATH="${FONTCONFIG_PATH:-$WIN/host-libs/etc/fonts}"
 export FONTCONFIG_FILE="${FONTCONFIG_FILE:-$WIN/host-libs/etc/fonts/fonts.conf}"
-export WINEDEBUG="${WINEDEBUG:-+err,+winmm}"
+export WINEDEBUG="${WINEDEBUG:-+err}"
 export BOX86_NOBANNER=1
 export BOX86_LOG="${BOX86_LOG:-0}"
 export BOX86_LD_LIBRARY_PATH="/media/fat/Windows/box86-extracted/usr/lib/box86-i386-linux-gnu:/media/fat/Windows/wine-installer/opt/wine-devel/lib:/media/fat/Windows/wine-installer/opt/wine-devel/lib/wine/i386-unix"
@@ -121,6 +121,6 @@ for d in /proc/[0-9]*; do
   esac
 done
 echo "===== ss1wo t+20s =====" | tee -a "$LOG"
-grep -E "SS1WO: (created|waveOutOpen|paused|first |playback released|STARVE|WOM_DONE|EndOfStream|EOS drained|EC_COMPLETE)|FILTER |force_ss1|graph has no|DURATION |STATE |BEFORE Run|^Run |POS i=0 |WAIT complete|DSHOW done|Sample dropped|Underrun of data" "$LOG" | tail -120 | tee /dev/stderr
+grep -E "SS1WO: (created|waveOutOpen|paused|first |playback released|STARVE|WRITE_ABORT|PCM tally|GAP |STAT |EndOfStream|EOS drained|EC_COMPLETE|RECV .* WIN|WR .* WIN|DONE .* WIN)|FILTER |force_ss1|graph has no|^Run |WAIT complete|DSHOW done" "$LOG" | tail -160 | tee /dev/stderr
 echo "log=$LOG — harness still running; not waiting so the tone stays audible"
 exit 0
