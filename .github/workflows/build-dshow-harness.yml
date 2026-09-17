@@ -1,0 +1,37 @@
+name: Build Win32 DirectShow WAV graph harness
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "scripts/ss1-winexe-dshow.c"
+      - ".github/workflows/build-dshow-harness.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  compile-pe32:
+    name: Cross-compile ss1-winexe-dshow.exe (i686-mingw)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build PE32 DirectShow tester
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            gcc-mingw-w64-i686 binutils-mingw-w64-i686 file
+          i686-w64-mingw32-gcc -O2 -Wall -s \
+            -o ss1-winexe-dshow.exe scripts/ss1-winexe-dshow.c \
+            -lole32 -loleaut32 -lstrmiids -luuid
+          file ss1-winexe-dshow.exe
+          i686-w64-mingw32-objdump -p ss1-winexe-dshow.exe | grep -E 'Magic|subsystem|DLL Name' | head -40
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ss1-winexe-dshow.exe
+          path: ss1-winexe-dshow.exe
+          if-no-files-found: error
