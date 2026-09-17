@@ -109,12 +109,15 @@ if [ "${SS1_WMP_WAVEOUT:-1}" != "0" ]; then
   else
     echo "WARN missing $WIN/bin/ss1waveout.ax" >&2
   fi
-  if [ -f "$WIN/bin/ss1wmpinj.dll" ]; then
-    cp -f "$WIN/bin/ss1wmpinj.dll" "$SYS32/ss1wmpinj.dll"
-    cp -f "$WIN/bin/ss1wmpinj.dll" "$PREFIX/drive_c/ss1wmpinj.dll"
-  fi
-  if [ -f "$WIN/bin/ss1-winexe-wmpwo.exe" ]; then
-    cp -f "$WIN/bin/ss1-winexe-wmpwo.exe" "$PREFIX/drive_c/ss1-winexe-wmpwo.exe"
+  # Method B: do not stage injector/helper PE unless explicitly requested.
+  if [ "${SS1_WMP_WAVEOUT_HELPER:-0}" != "0" ]; then
+    if [ -f "$WIN/bin/ss1wmpinj.dll" ]; then
+      cp -f "$WIN/bin/ss1wmpinj.dll" "$SYS32/ss1wmpinj.dll"
+      cp -f "$WIN/bin/ss1wmpinj.dll" "$PREFIX/drive_c/ss1wmpinj.dll"
+    fi
+    if [ -f "$WIN/bin/ss1-winexe-wmpwo.exe" ]; then
+      cp -f "$WIN/bin/ss1-winexe-wmpwo.exe" "$PREFIX/drive_c/ss1-winexe-wmpwo.exe"
+    fi
   fi
 fi
 
