@@ -29,12 +29,12 @@ jobs:
             gcc-mingw-w64-i686 binutils-mingw-w64-i686 file
           i686-w64-mingw32-gcc -O2 -Wall -s \
             -o ss1-winexe-dshow.exe scripts/ss1-winexe-dshow.c \
-            -lole32 -loleaut32 -lstrmiids -luuid
+            -static-libgcc -lole32 -loleaut32 -lstrmiids -luuid
           file ss1-winexe-dshow.exe
           i686-w64-mingw32-objdump -p ss1-winexe-dshow.exe | grep -E 'Magic|subsystem|DLL Name' | head -40
           i686-w64-mingw32-gcc -O2 -Wall -s -shared \
             -o ss1waveout.ax scripts/ss1-winexe-waveout.c scripts/ss1waveout.def \
-            -Wl,--kill-at \
+            -Wl,--kill-at -static-libgcc \
             -lole32 -loleaut32 -lwinmm -lstrmiids -luuid
           file ss1waveout.ax
           i686-w64-mingw32-objdump -p ss1waveout.ax | grep -E 'Magic|subsystem|DLL Name|DllGetClassObject|DllCanUnloadNow' | head -50
