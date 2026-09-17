@@ -28,10 +28,29 @@ typedef int gboolean;
 typedef uint64_t GstClockTime;
 
 #define GST_STATE_NULL 1
+#define GST_STATE_READY 2
+#define GST_STATE_PAUSED 3
 #define GST_STATE_PLAYING 4
+#define GST_STATE_CHANGE_FAILURE 0
+#define GST_STATE_CHANGE_SUCCESS 1
+#define GST_STATE_CHANGE_ASYNC 2
+#define GST_STATE_CHANGE_NO_PREROLL 3
+#define GST_FORMAT_TIME 3
+#define GST_SECOND ((GstClockTime)1000000000ULL)
 #define GST_CLOCK_TIME_NONE ((GstClockTime)-1)
 #define GST_MESSAGE_EOS (1 << 1)
 #define GST_MESSAGE_ERROR (1 << 2)
+#define GST_MESSAGE_WARNING (1 << 3)
+#define GST_MESSAGE_TAG (1 << 5)
+#define GST_MESSAGE_STATE_CHANGED (1 << 7)
+#define GST_MESSAGE_DURATION_CHANGED (1 << 19)
+#define GST_MESSAGE_LATENCY (1 << 20)
+#define GST_MESSAGE_ASYNC_DONE (1 << 22)
+#define GST_MESSAGE_STREAM_START (1 << 29)
+#define GST_BUS_WATCH \
+    (GST_MESSAGE_EOS | GST_MESSAGE_ERROR | GST_MESSAGE_WARNING | GST_MESSAGE_TAG | \
+     GST_MESSAGE_STATE_CHANGED | GST_MESSAGE_DURATION_CHANGED | GST_MESSAGE_LATENCY | \
+     GST_MESSAGE_ASYNC_DONE | GST_MESSAGE_STREAM_START)
 
 static void *libgst;
 
@@ -50,12 +69,21 @@ static GstElement *(*p_gst_element_factory_make)(const gchar *, const gchar *);
 static gboolean (*p_gst_bin_add)(GstElement *, GstElement *);
 static gboolean (*p_gst_element_link)(GstElement *, GstElement *);
 static int (*p_gst_element_set_state)(GstElement *, int);
+static int (*p_gst_element_get_state)(GstElement *, int *, int *, GstClockTime);
+static int (*p_gst_element_query_position)(GstElement *, int, int64_t *);
+static int (*p_gst_element_query_duration)(GstElement *, int, int64_t *);
 static GstBus *(*p_gst_element_get_bus)(GstElement *);
 static GstMessage *(*p_gst_bus_timed_pop_filtered)(GstBus *, GstClockTime, int);
 static void (*p_gst_util_set_object_arg)(void *, const gchar *, const gchar *);
 static void (*p_gst_message_unref)(void *);
+static void (*p_gst_message_parse_error)(GstMessage *, void **, gchar **);
+static void (*p_gst_message_parse_state_changed)(GstMessage *, int *, int *, int *);
+static const gchar *(*p_gst_message_type_get_name)(int);
+static gchar *(*p_gst_object_get_name)(void *);
 static void *(*p_gst_object_unref)(void *);
+static void (*p_g_free)(void *);
 static void (*p_gst_deinit)(void);
+static void *libglib;
 
 static void flush_print(const char *fmt, ...)
 {
@@ -182,12 +210,109 @@ static int run_plugin_accessors(GstElementFactory *factory)
     return 0;
 }
 
+static const char *state_name(int s)
+{
+    switch (s) {
+    case 0: return "VOID_PENDING";
+    case GST_STATE_NULL: return "NULL";
+    case GST_STATE_READY: return "READY";
+    case GST_STATE_PAUSED: return "PAUSED";
+    case GST_STATE_PLAYING: return "PLAYING";
+    default: return "?";
+    }
+}
+
+static const char *change_name(int r)
+{
+    switch (r) {
+    case GST_STATE_CHANGE_FAILURE: return "FAILURE";
+    case GST_STATE_CHANGE_SUCCESS: return "SUCCESS";
+    case GST_STATE_CHANGE_ASYNC: return "ASYNC";
+    case GST_STATE_CHANGE_NO_PREROLL: return "NO_PREROLL";
+    default: return "?";
+    }
+}
+
+/* i386 GstMessage: GstMiniObject (36) then GstMessageType at offset 36. */
+static int message_type(GstMessage *msg)
+{
+    return msg ? *(int *)((char *)msg + 36) : 0;
+}
+
+static void *message_src(GstMessage *msg)
+{
+    /* type(4) + pad-to-8 + timestamp(8) => src at 48 */
+    return msg ? *(void **)((char *)msg + 48) : NULL;
+}
+
+static void print_query(GstElement *pipeline, const char *tag)
+{
+    int64_t pos = -1, dur = -1;
+    int got_pos = 0, got_dur = 0;
+    if (p_gst_element_query_position)
+        got_pos = p_gst_element_query_position(pipeline, GST_FORMAT_TIME, &pos);
+    if (p_gst_element_query_duration)
+        got_dur = p_gst_element_query_duration(pipeline, GST_FORMAT_TIME, &dur);
+    flush_print("QUERY %s position_ok=%d position_ns=%lld duration_ok=%d duration_ns=%lld\n",
+                tag, got_pos, (long long)pos, got_dur, (long long)dur);
+}
+
+static void print_get_state(GstElement *pipeline, const char *tag, GstClockTime timeout)
+{
+    int cur = -1, pending = -1, ret = -1;
+    if (!p_gst_element_get_state) {
+        flush_print("FAIL gst_element_get_state missing (%s)\n", tag);
+        return;
+    }
+    flush_print("BEFORE gst_element_get_state %s timeout_ns=%llu\n",
+                tag, (unsigned long long)timeout);
+    ret = p_gst_element_get_state(pipeline, &cur, &pending, timeout);
+    flush_print("AFTER gst_element_get_state %s ret=%d (%s) current=%d (%s) pending=%d (%s)\n",
+                tag, ret, change_name(ret), cur, state_name(cur), pending, state_name(pending));
+}
+
+static void describe_message(GstMessage *msg)
+{
+    int type = message_type(msg);
+    const char *tname = p_gst_message_type_get_name ? p_gst_message_type_get_name(type) : "?";
+    void *src = message_src(msg);
+    char *srcname = NULL;
+    if (src && p_gst_object_get_name)
+        srcname = p_gst_object_get_name(src);
+    flush_print("BUS msg=%p type=0x%x (%s) src=%p name=%s\n",
+                (void *)msg, type, tname ? tname : "?", src,
+                srcname ? srcname : "(null)");
+    if (type == GST_MESSAGE_STATE_CHANGED && p_gst_message_parse_state_changed) {
+        int olds = -1, news = -1, pending = -1;
+        p_gst_message_parse_state_changed(msg, &olds, &news, &pending);
+        flush_print("BUS STATE_CHANGED %s: %s -> %s pending %s\n",
+                    srcname ? srcname : "?", state_name(olds), state_name(news),
+                    state_name(pending));
+    }
+    if ((type == GST_MESSAGE_ERROR || type == GST_MESSAGE_WARNING) &&
+        p_gst_message_parse_error) {
+        void *err = NULL;
+        char *dbg = NULL;
+        p_gst_message_parse_error(msg, &err, &dbg);
+        flush_print("BUS %s debug=%s gerror=%p\n",
+                    type == GST_MESSAGE_ERROR ? "ERROR" : "WARNING",
+                    dbg ? dbg : "(null)", err);
+        if (dbg && p_g_free)
+            p_g_free(dbg);
+    }
+    if (srcname && p_g_free)
+        p_g_free(srcname);
+}
+
 static int run_pipeline(const char *wav)
 {
     GstElement *pipeline, *src, *parse, *sink;
-    GstBus *bus;
+    GstBus *bus = NULL;
     GstMessage *msg;
+    int set_ret;
     int rc = 1;
+    int saw_eos = 0, saw_error = 0, nmsg = 0, polls;
+    const int max_polls = 24;
 
     flush_print("BEFORE pipeline factory_make filesrc/wavparse/fakesink wav=%s\n", wav);
     pipeline = p_gst_element_factory_make("pipeline", "ss1-pipe");
@@ -220,26 +345,52 @@ static int run_pipeline(const char *wav)
     flush_print("AFTER gst_element_link\n");
 
     flush_print("BEFORE gst_element_set_state PLAYING\n");
-    if (p_gst_element_set_state(pipeline, GST_STATE_PLAYING) == 0) {
+    set_ret = p_gst_element_set_state(pipeline, GST_STATE_PLAYING);
+    flush_print("AFTER gst_element_set_state PLAYING ret=%d (%s)\n",
+                set_ret, change_name(set_ret));
+    if (set_ret == GST_STATE_CHANGE_FAILURE) {
         flush_print("FAIL gst_element_set_state PLAYING\n");
         goto out;
     }
-    flush_print("AFTER gst_element_set_state PLAYING\n");
+
+    print_get_state(pipeline, "after_set_playing", 2 * GST_SECOND);
+    print_query(pipeline, "after_set_playing");
 
     bus = p_gst_element_get_bus(pipeline);
-    flush_print("BEFORE gst_bus_timed_pop_filtered EOS|ERROR bus=%p\n", (void *)bus);
-    msg = p_gst_bus_timed_pop_filtered(bus, GST_CLOCK_TIME_NONE,
-                                       GST_MESSAGE_EOS | GST_MESSAGE_ERROR);
-    flush_print("AFTER gst_bus_timed_pop_filtered msg=%p\n", (void *)msg);
-    if (msg) {
-        /* GstMessage type is at a known offset; print pointer only. */
-        flush_print("OK pipeline got bus message %p\n", (void *)msg);
+    flush_print("BUS watch mask=0x%x bus=%p\n", GST_BUS_WATCH, (void *)bus);
+    for (polls = 0; polls < max_polls && !saw_eos && !saw_error; polls++) {
+        flush_print("BEFORE gst_bus_timed_pop_filtered poll=%d timeout=250ms\n", polls);
+        msg = p_gst_bus_timed_pop_filtered ? p_gst_bus_timed_pop_filtered(
+                  bus, GST_SECOND / 4, GST_BUS_WATCH) : NULL;
+        flush_print("AFTER gst_bus_timed_pop_filtered poll=%d msg=%p\n", polls, (void *)msg);
+        if (!msg) {
+            print_get_state(pipeline, "idle_poll", 0);
+            print_query(pipeline, "idle_poll");
+            continue;
+        }
+        nmsg++;
+        describe_message(msg);
+        if (message_type(msg) == GST_MESSAGE_EOS)
+            saw_eos = 1;
+        if (message_type(msg) == GST_MESSAGE_ERROR)
+            saw_error = 1;
         if (p_gst_message_unref)
             p_gst_message_unref(msg);
-        rc = 0;
+        print_query(pipeline, "after_bus_msg");
     }
+
+    print_get_state(pipeline, "after_bus_loop", 0);
+    print_query(pipeline, "after_bus_loop");
+    flush_print("PIPELINE summary nmsg=%d saw_eos=%d saw_error=%d polls=%d\n",
+                nmsg, saw_eos, saw_error, polls);
+    if (saw_eos && !saw_error)
+        rc = 0;
+    else
+        flush_print("FAIL pipeline did not reach EOS (preroll/dataflow stall)\n");
+
     if (bus && p_gst_object_unref)
         p_gst_object_unref(bus);
+    bus = NULL;
 
     flush_print("BEFORE gst_element_set_state NULL\n");
     p_gst_element_set_state(pipeline, GST_STATE_NULL);
@@ -300,12 +451,27 @@ int main(int argc, char **argv)
     p_gst_bin_add = try_dlsym("gst_bin_add");
     p_gst_element_link = try_dlsym("gst_element_link");
     p_gst_element_set_state = try_dlsym("gst_element_set_state");
+    p_gst_element_get_state = try_dlsym("gst_element_get_state");
+    p_gst_element_query_position = try_dlsym("gst_element_query_position");
+    p_gst_element_query_duration = try_dlsym("gst_element_query_duration");
     p_gst_element_get_bus = try_dlsym("gst_element_get_bus");
     p_gst_bus_timed_pop_filtered = try_dlsym("gst_bus_timed_pop_filtered");
     p_gst_util_set_object_arg = try_dlsym("gst_util_set_object_arg");
     p_gst_message_unref = try_dlsym("gst_message_unref");
+    p_gst_message_parse_error = try_dlsym("gst_message_parse_error");
+    p_gst_message_parse_state_changed = try_dlsym("gst_message_parse_state_changed");
+    p_gst_message_type_get_name = try_dlsym("gst_message_type_get_name");
+    p_gst_object_get_name = try_dlsym("gst_object_get_name");
     p_gst_object_unref = try_dlsym("gst_object_unref");
     p_gst_deinit = try_dlsym("gst_deinit");
+
+    libglib = dlopen("libglib-2.0.so.0", RTLD_NOW | RTLD_GLOBAL);
+    if (libglib)
+        p_g_free = dlsym(libglib, "g_free");
+    if (p_g_free)
+        flush_print("OK dlsym g_free %p\n", (void *)p_g_free);
+    else
+        flush_print("FAIL dlsym g_free\n");
     if (!p_gst_init || !p_gst_element_factory_find)
         return 4;
 
