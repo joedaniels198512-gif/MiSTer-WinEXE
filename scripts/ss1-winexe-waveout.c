@@ -101,6 +101,11 @@ struct SS1Filter {
     LONG done_count;
     LONG bytes_written;
     BOOL eos_waiting;
+    BOOL released;
+    DWORD t_first_recv;
+    DWORD t_first_write;
+    DWORD t_release;
+    LONG min_in_flight;
 };
 
 static HRESULT ss1_create(IUnknown *outer, IBaseFilter **out);
@@ -220,7 +225,7 @@ static void CALLBACK wo_proc(HWAVEOUT hwo, UINT msg, DWORD_PTR inst,
     SS1Filter *f = (SS1Filter *)inst;
     WAVEHDR *hdr;
     UINT i;
-    LONG done, every;
+    LONG done;
 
     (void)hwo;
     (void)p2;
@@ -234,14 +239,32 @@ static void CALLBACK wo_proc(HWAVEOUT hwo, UINT msg, DWORD_PTR inst,
     if (f->in_flight > 0)
         f->in_flight--;
     done = ++f->done_count;
+    if (f->released && f->in_flight < f->min_in_flight)
+        f->min_in_flight = f->in_flight;
     if (f->eos_waiting && f->in_flight == 0)
         SetEvent(f->drain_ev);
     SetEvent(f->free_ev);
-    LeaveCriticalSection(&f->cs);
+    {
+        DWORD now = GetTickCount();
+        BOOL early = !f->released ||
+                     (f->t_release && (now - f->t_release) < 2000);
+        LONG inflight = f->in_flight;
+        LONG minfl = f->min_in_flight;
+        BOOL rel = f->released;
+        LeaveCriticalSection(&f->cs);
 
-    every = (done <= 16) ? 1 : 50;
-    if ((done % every) == 0 || done <= 8)
-        logf("WOM_DONE n=%ld in_flight=%ld\n", (long)done, (long)f->in_flight);
+        if (!rel)
+            logf("WOM_DONE_BEFORE_RELEASE n=%ld in_flight=%ld\n",
+                 (long)done, (long)inflight);
+        else {
+            DWORD every = ((now - f->t_release) < 2000) ? 1 : 50;
+            if (early || (done % every) == 0 || done <= 8)
+                logf("WOM_DONE n=%ld in_flight=%ld min=%ld dt=%lu\n",
+                     (long)done, (long)inflight, (long)minfl,
+                     (unsigned long)(f->t_release ? now - f->t_release : 0));
+        }
+        return;
+    }
 }
 
 static void wo_free_buffers(SS1Filter *f)
@@ -353,10 +376,17 @@ static HRESULT wo_open(SS1Filter *f, const WAVEFORMATEX *wf)
     f->in_flight = 0;
     f->done_count = 0;
     f->bytes_written = 0;
+    f->released = FALSE;
+    f->t_first_recv = 0;
+    f->t_first_write = 0;
+    f->t_release = 0;
+    f->min_in_flight = 0;
     ResetEvent(f->drain_ev);
     SetEvent(f->free_ev);
-    /* Hold the device until IMediaFilter::Run so Pause can preroll. */
+    /* Stay paused until try_release() sees in_flight >= SS1_WO_PRIME_BUFFERS. */
     waveOutPause(f->hwo);
+    logf("waveOut paused; will release at in_flight>=%d (~%d ms)\n",
+         SS1_WO_PRIME_BUFFERS, SS1_WO_PRIME_BUFFERS * SS1_WO_BUFFER_MS);
     return S_OK;
 }
 
@@ -384,6 +414,36 @@ static int wait_free(SS1Filter *f, DWORD timeout)
     }
 }
 
+static void try_release(SS1Filter *f)
+{
+    LONG q = 0;
+    BOOL do_it = FALSE;
+    BOOL eos = FALSE;
+
+    if (!f->hwo)
+        return;
+    EnterCriticalSection(&f->cs);
+    if (f->state == State_Running && !f->released) {
+        if (f->in_flight >= SS1_WO_PRIME_BUFFERS || f->eos) {
+            do_it = TRUE;
+            f->released = TRUE;
+            q = f->in_flight;
+            eos = f->eos;
+            f->t_release = GetTickCount();
+            f->min_in_flight = q;
+        }
+    }
+    LeaveCriticalSection(&f->cs);
+    if (!do_it)
+        return;
+    waveOutRestart(f->hwo);
+    logf("playback released in_flight=%ld prime=%d dt_recv_ms=%lu dt_write_ms=%lu%s\n",
+         (long)q, SS1_WO_PRIME_BUFFERS,
+         (unsigned long)(f->t_first_recv ? f->t_release - f->t_first_recv : 0),
+         (unsigned long)(f->t_first_write ? f->t_release - f->t_first_write : 0),
+         eos ? " (EOS fallback)" : "");
+}
+
 static HRESULT write_pcm(SS1Filter *f, const BYTE *data, DWORD len)
 {
     while (len) {
@@ -409,6 +469,12 @@ static HRESULT write_pcm(SS1Filter *f, const BYTE *data, DWORD len)
         f->hdr[idx].dwFlags &= ~(WHDR_DONE | WHDR_INQUEUE);
         f->hdr[idx].dwFlags |= WHDR_PREPARED;
 
+        if (!f->t_first_write) {
+            f->t_first_write = GetTickCount();
+            logf("first waveOutWrite tick=%lu len=%lu in_flight=%ld\n",
+                 (unsigned long)f->t_first_write, (unsigned long)chunk,
+                 (long)f->in_flight);
+        }
         mmr = waveOutWrite(f->hwo, &f->hdr[idx], sizeof(WAVEHDR));
         if (mmr != MMSYSERR_NOERROR) {
             logf("waveOutWrite mmr=%u idx=%d len=%lu\n", mmr, idx, (unsigned long)chunk);
@@ -422,6 +488,7 @@ static HRESULT write_pcm(SS1Filter *f, const BYTE *data, DWORD len)
         f->in_flight++;
         f->bytes_written += (LONG)chunk;
         LeaveCriticalSection(&f->cs);
+        try_release(f);
         data += chunk;
         len -= chunk;
     }
@@ -515,6 +582,7 @@ static HRESULT WINAPI base_Stop(IBaseFilter *iface)
     EnterCriticalSection(&f->cs);
     f->state = State_Stopped;
     f->eos_waiting = FALSE;
+    f->released = FALSE;
     SetEvent(f->free_ev);
     SetEvent(f->drain_ev);
     LeaveCriticalSection(&f->cs);
@@ -542,13 +610,17 @@ static HRESULT WINAPI base_Pause(IBaseFilter *iface)
 static HRESULT WINAPI base_Run(IBaseFilter *iface, REFERENCE_TIME start)
 {
     SS1Filter *f = f_from_base(iface);
-    logf("Run start=%lld hwo=%p\n", (long long)start, (void *)f->hwo);
+    logf("Run start=%lld hwo=%p in_flight=%ld released=%d (hold until prime=%d)\n",
+         (long long)start, (void *)f->hwo, (long)f->in_flight, (int)f->released,
+         SS1_WO_PRIME_BUFFERS);
     (void)start;
     EnterCriticalSection(&f->cs);
     f->state = State_Running;
     LeaveCriticalSection(&f->cs);
-    if (f->hwo)
+    if (f->hwo && f->released)
         waveOutRestart(f->hwo);
+    else
+        try_release(f);
     if (f->alloc)
         IMemAllocator_Commit(f->alloc);
     return S_OK;
@@ -1205,10 +1277,13 @@ static HRESULT WINAPI pin_EndOfStream(IPin *iface)
     if (f->in_flight == 0)
         SetEvent(f->drain_ev);
     LeaveCriticalSection(&f->cs);
+    try_release(f);
 
     wait_ms = (DWORD)(f->nbufs * SS1_WO_BUFFER_MS * 4 + 2000);
     WaitForSingleObject(f->drain_ev, wait_ms);
-    logf("EOS drained in_flight=%ld done=%ld\n", (long)f->in_flight, (long)f->done_count);
+    logf("EOS drained in_flight=%ld done=%ld starve=%ld min_in_flight=%ld released=%d\n",
+         (long)f->in_flight, (long)f->done_count, (long)f->starve,
+         (long)f->min_in_flight, (int)f->released);
 
     if (f->sink && f->state != State_Stopped) {
         HRESULT hr = IMediaEventSink_Notify(f->sink, EC_COMPLETE, S_OK,
@@ -1225,6 +1300,7 @@ static HRESULT WINAPI pin_BeginFlush(IPin *iface)
     f->flushing = TRUE;
     f->eos = FALSE;
     f->eos_waiting = FALSE;
+    f->released = FALSE;
     SetEvent(f->free_ev);
     SetEvent(f->drain_ev);
     LeaveCriticalSection(&f->cs);
@@ -1240,6 +1316,8 @@ static HRESULT WINAPI pin_EndFlush(IPin *iface)
     f->flushing = FALSE;
     ResetEvent(f->drain_ev);
     LeaveCriticalSection(&f->cs);
+    if (f->hwo)
+        waveOutPause(f->hwo);
     return S_OK;
 }
 static HRESULT WINAPI pin_NewSegment(IPin *iface, REFERENCE_TIME a, REFERENCE_TIME b, double r)
@@ -1335,9 +1413,15 @@ static HRESULT WINAPI mem_Receive(IMemInputPin *iface, IMediaSample *sample)
         return S_OK;
 
     f->recv_count++;
+    if (f->recv_count == 1) {
+        f->t_first_recv = GetTickCount();
+        logf("first Receive tick=%lu len=%ld in_flight=%ld state=%d released=%d\n",
+             (unsigned long)f->t_first_recv, (long)slen, (long)f->in_flight,
+             (int)f->state, (int)f->released);
+    }
     if (f->recv_count <= 8 || (f->recv_count % 50) == 0)
-        logf("Receive n=%ld len=%ld in_flight=%ld\n",
-             (long)f->recv_count, (long)slen, (long)f->in_flight);
+        logf("Receive n=%ld len=%ld in_flight=%ld released=%d\n",
+             (long)f->recv_count, (long)slen, (long)f->in_flight, (int)f->released);
 
     return write_pcm(f, ptr, (DWORD)slen);
 }

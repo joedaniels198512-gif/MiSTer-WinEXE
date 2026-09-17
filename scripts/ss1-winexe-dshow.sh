@@ -121,6 +121,6 @@ for d in /proc/[0-9]*; do
   esac
 done
 echo "===== ss1wo t+20s =====" | tee -a "$LOG"
-grep -E "SS1WO:|STARVE|WOM_DONE|waveOut|EC_COMPLETE|FILTER |force_ss1|graph has no|POS |DURATION|STATE |Run |FAIL|underrun|Underrun" "$LOG" | tail -90 | tee -a /dev/stderr
+grep -E "SS1WO: (created|waveOutOpen|paused|first |playback released|STARVE|WOM_DONE|EndOfStream|EOS drained|EC_COMPLETE)|FILTER |force_ss1|graph has no|DURATION |STATE |BEFORE Run|^Run |POS i=0 |WAIT complete|DSHOW done|Sample dropped|Underrun of data" "$LOG" | tail -120 | tee /dev/stderr
 echo "log=$LOG — harness still running; not waiting so the tone stays audible"
 exit 0
