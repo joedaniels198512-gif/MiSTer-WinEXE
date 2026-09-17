@@ -7,6 +7,7 @@
  */
 #define COBJMACROS
 #define CINTERFACE
+#define STRSAFE_NO_DEPRECATE
 #include <windows.h>
 #include <mmsystem.h>
 #include <ole2.h>

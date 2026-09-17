@@ -5,6 +5,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define COBJMACROS
 #define CINTERFACE
+#define STRSAFE_NO_DEPRECATE
 #include <windows.h>
 #include <ole2.h>
 #include <dshow.h>
