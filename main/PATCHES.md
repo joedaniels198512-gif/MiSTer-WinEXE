@@ -71,6 +71,8 @@ Hook: at the end of `user_io_status_set()`, if `is_winexe() && value`, call `win
 
 At the start of `user_io_file_tx()`, if `is_winexe()`, call `winexe_wex_selected(name)` and **return** so the `.WEX` is never `user_io_set_download`'d into FPGA memory.
 
+`winexe_spawn()` double-forks, `setsid()`s, redirects stdio, closes inherited FDs, and sets `HOME=/root` and `DISPLAY=:0`. MiSTer Main itself runs with `HOME=/` and no `DISPLAY`; a single `fork(); execl(launcher)` inherited that and Wine unloaded `winex11.drv` (`nodrv_CreateWindow`). The launcher must not be tied to the `user_io_file_tx` stack.
+
 | Call | Meaning |
 |---|---|
 | `user_io_file_tx` while `is_winexe()` | `.WEX` selected → `ss1-winexe-launch.sh launch-wex <path>` (**not** streamed to FPGA) |

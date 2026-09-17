@@ -26,8 +26,74 @@ STATUS=/tmp/ss1-winexe.status
 LOCK=/tmp/ss1-winexe.lock
 WATCH_PID=/tmp/ss1-winexe-watch.pid
 PIN_PID=/tmp/ss1-winexe-pin.pid
+WEXLOG="$WIN/logs/wex-launch.log"
 EXTRA_ARGS=""
 CURRENT_WEX=""
+
+# MiSTer Main starts as HOME=/ PWD=/ PATH=/sbin:/usr/sbin:/bin:/usr/bin and
+# no DISPLAY. Wine then loads winex11.drv and unloads it (nodrv_CreateWindow).
+# SSH works because login sets HOME=/root. Normalize before any launch.
+normalize_runtime_env() {
+  if [ -z "$HOME" ] || [ "$HOME" = "/" ]; then
+    export HOME=/root
+  fi
+  export USER="${USER:-root}"
+  export LOGNAME="${LOGNAME:-$USER}"
+  export DISPLAY=:0
+  case ":$PATH:" in
+    *:/media/fat/Windows/bin:*) ;;
+    *) export PATH="/media/fat/Windows/bin:/usr/bin:/bin:/usr/sbin:/sbin${PATH:+:$PATH}" ;;
+  esac
+  if [ -d /root ]; then
+    cd /root 2>/dev/null || cd "$WIN" || cd /
+  fi
+  unset WAYLAND_DISPLAY
+}
+
+wexlog() {
+  mkdir -p "$(dirname "$WEXLOG")"
+  echo "$(date '+%Y-%m-%dT%H:%M:%S%z' 2>/dev/null || date) $*" >>"$WEXLOG"
+}
+
+wexlog_kv() {
+  wexlog "  $1=${2-}"
+}
+
+wexlog_env() {
+  wexlog "env launcher_pid=$$ ppid=$PPID uid=$(id -u 2>/dev/null) gid=$(id -g 2>/dev/null)"
+  wexlog_kv cwd "$(pwd)"
+  wexlog_kv HOME "$HOME"
+  wexlog_kv USER "$USER"
+  wexlog_kv PATH "$PATH"
+  wexlog_kv DISPLAY "$DISPLAY"
+  wexlog_kv WINEPREFIX "$WINEPREFIX"
+  wexlog_kv WINELOADER "$WINELOADER"
+  wexlog_kv BOX86 "$BOX86"
+  wexlog_kv BOX86_PATH "$BOX86_PATH"
+  wexlog_kv BOX86_LD_LIBRARY_PATH "$BOX86_LD_LIBRARY_PATH"
+  wexlog_kv LD_LIBRARY_PATH "$LD_LIBRARY_PATH"
+  wexlog_kv SHELL "$SHELL"
+}
+
+wait_comm_pid() {
+  name=$1
+  t=${2:-20}
+  i=0
+  while [ "$i" -lt "$t" ]; do
+    for d in /proc/[0-9]*; do
+      c=$(cat "$d/comm" 2>/dev/null) || continue
+      if [ "$c" = "$name" ]; then
+        echo "${d#/proc/}"
+        return 0
+      fi
+    done
+    sleep 1
+    i=$((i + 1))
+  done
+  return 1
+}
+
+normalize_runtime_env
 
 CMD=${1:-status}
 [ $# -gt 0 ] && shift
@@ -393,30 +459,43 @@ wex_abs_path() {
 }
 
 launch_wex() {
+  wexlog "==== launch-wex begin argv='$1' ===="
+  wexlog "stage=1 WEX received"
   wex=$(wex_abs_path "$1") || {
+    wexlog "stage=1 FAIL missing path"
     echo "launch-wex path required" >&2
     return 1
   }
+  wexlog_kv wex_path "$wex"
+  wexlog_env
   [ -f "$wex" ] || {
+    wexlog "stage=1 FAIL not a file: $wex"
     echo "missing .WEX: $wex" >&2
     return 1
   }
   stem=$(ini_get "$wex" winexe profile "")
+  wexlog "stage=2 profile parsed profile='$stem'"
   if [ -z "$stem" ]; then
+    wexlog "stage=2 FAIL need [winexe] profile="
     echo "invalid .WEX (need [winexe] profile=): $wex" >&2
     return 1
   fi
   CURRENT_WEX=$wex
   launch_profile "$stem"
+  rc=$?
+  wexlog "stage=11 launcher exit rc=$rc"
+  return $rc
 }
 
 launch_profile() {
   stem=$1
   pf=$(resolve_profile "$stem") || {
+    wexlog "stage=2 FAIL unknown profile '$stem'"
     echo "unknown profile '$stem'" >&2
     return 1
   }
   stem=$(basename "$pf" .ini)
+  wexlog "stage=2 profile loaded ini=$pf"
 
   name=$(ini_get "$pf" app name "$stem")
   exe=$(ini_get "$pf" app exe "")
@@ -429,10 +508,15 @@ launch_profile() {
   optional=$(ini_get "$pf" app optional "")
   prefix=$(ini_get "$pf" runtime wine_prefix "$WIN/wineprefix-prebuilt")
   box86=$(ini_get "$pf" runtime box86 "")
+  wexlog_kv exe "$exe"
+  wexlog_kv unix_exe "$unix_exe"
+  wexlog_kv workdir "$workdir"
+  wexlog_kv wine_prefix "$prefix"
 
   check=$require
   [ -n "$check" ] || check=$unix_exe
   if [ -n "$check" ] && [ ! -f "$check" ]; then
+    wexlog "stage=2 FAIL missing required $check"
     echo "missing required file: $check ($name)" >&2
     return 1
   fi
@@ -441,25 +525,39 @@ launch_profile() {
   fi
 
   write_status launching "$stem" "$name"
+  wexlog "stage=3 previous session cleanup"
   stop_watch
   stop_wine_session
   restore_defaults
+  wexlog "stage=3 cleanup done"
 
-  ensure_core || return 1
-  bring_up_stack || return 1
-  apply_display "$pf" || return 1
+  ensure_core || {
+    wexlog "stage=4 FAIL ensure_core"
+    return 1
+  }
+  wexlog "stage=5 Xorg start"
+  bring_up_stack
+  rc=$?
+  wexlog "stage=5 Xorg rc=$rc DISPLAY=$DISPLAY x11=$(ls /tmp/.X11-unix 2>/dev/null)"
+  [ "$rc" -eq 0 ] || return 1
+  wexlog "stage=6 presenter start"
+  apply_display "$pf"
+  rc=$?
+  wexlog "stage=6 presenter rc=$rc"
+  [ "$rc" -eq 0 ] || return 1
   apply_cpu_services "$pf"
 
   export WINEPREFIX="$prefix"
   export WINEARCH="${WINEARCH:-win32}"
   export FONTCONFIG_PATH="${FONTCONFIG_PATH:-$WIN/host-libs/etc/fonts}"
   export FONTCONFIG_FILE="${FONTCONFIG_FILE:-$WIN/host-libs/etc/fonts/fonts.conf}"
-  export DISPLAY="${DISPLAY:-:0}"
+  export DISPLAY=:0
   ini_env_apply "$pf"
   if [ -f "$WIN/bin/ss1-x11-env.sh" ]; then
     # shellcheck disable=SC1091
     . "$WIN/bin/ss1-x11-env.sh"
   fi
+  export DISPLAY=:0
 
   if [ -n "$box86" ]; then
     export BOX86="$box86"
@@ -468,6 +566,7 @@ launch_profile() {
 
   pre=$(ini_get "$pf" helpers pre "")
   [ -n "$pre" ] || pre=$(ini_get "$pf" config script "")
+  wexlog "stage=7 helpers pre='$pre'"
   run_helpers "$pre"
 
   LOGDIR="$WIN/logs"
@@ -493,13 +592,33 @@ launch_profile() {
     launch="exec $winecmd \"$exe\" $extra"
   fi
 
+  wexlog "stage=8 wine command: $launch"
+  wexlog_env
   echo "===== launch $name $(date) =====" >>"$WINELOG"
-  setsid /bin/sh -c "$launch" </dev/null >>"$WINELOG" 2>&1 &
+  echo "DISPLAY=$DISPLAY HOME=$HOME" >>"$WINELOG"
+  # Force DISPLAY/HOME into the detached wine session. setsid alone is not
+  # enough if the parent was forked from MiSTer Main (HOME=/, DISPLAY unset).
+  HOME="$HOME" DISPLAY=:0 setsid /bin/sh -c "export HOME=\"$HOME\"; export DISPLAY=:0; $launch" </dev/null >>"$WINELOG" 2>&1 &
   echo $! > /tmp/ss1-wine.pid
+  wexlog "stage=9 wine/box86 started pid=$(cat /tmp/ss1-wine.pid)"
 
   pin_app_comm "$(ini_get "$pf" cpu app_comm "")" "$(ini_get "$pf" cpu app_affinity "")"
   run_helpers "$(ini_get "$pf" helpers post "")"
-  run_helpers "$(ini_get "$pf" helpers background "")"
+  bg=$(ini_get "$pf" helpers background "")
+  wexlog "stage=7 helpers background='$bg'"
+  run_helpers "$bg"
+
+  target=$(ini_get "$pf" cpu app_comm "")
+  if [ -z "$target" ]; then
+    base=$(basename "${unix_exe:-$exe}")
+    target=$base
+  fi
+  tpid=$(wait_comm_pid "$target" 20)
+  if [ -n "$tpid" ]; then
+    wexlog "stage=10 target EXE detected comm=$target pid=$tpid"
+  else
+    wexlog "stage=10 FAIL target EXE not seen comm=$target (wine may still be starting)"
+  fi
 
   write_status running "$stem" "$name"
   start_watch "$stem"
