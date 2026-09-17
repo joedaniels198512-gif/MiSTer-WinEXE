@@ -115,7 +115,7 @@ static void dump_mountmgr(char letter)
     CloseHandle(mgr);
 }
 
-static int set_drive_cdrom(char letter)
+static int set_drive_cdrom(char letter, const char *unix_mount, const char *unix_device)
 {
     HANDLE mgr;
     struct mountmgr_unix_drive in;
@@ -132,22 +132,28 @@ static int set_drive_cdrom(char letter)
         flog("set-cdrom: mountmgr open gle=%lu", (unsigned long)GetLastError());
         return 0;
     }
-    memset(&in, 0, sizeof in);
-    in.letter = (WCHAR)letter;
-    memset(qbuf, 0, sizeof qbuf);
-    if (!DeviceIoControl(mgr, IOCTL_MOUNTMGR_QUERY_UNIX_DRIVE,
-                         &in, sizeof in, qbuf, sizeof qbuf, &br, NULL)) {
-        flog("set-cdrom: QUERY failed gle=%lu", (unsigned long)GetLastError());
-        CloseHandle(mgr);
-        return 0;
+    if (unix_mount && unix_mount[0]) {
+        mp = (char *)unix_mount;
+        dev = (char *)unix_device;
+    } else {
+        memset(&in, 0, sizeof in);
+        in.letter = (WCHAR)letter;
+        memset(qbuf, 0, sizeof qbuf);
+        if (!DeviceIoControl(mgr, IOCTL_MOUNTMGR_QUERY_UNIX_DRIVE,
+                             &in, sizeof in, qbuf, sizeof qbuf, &br, NULL)) {
+            flog("set-cdrom: QUERY failed gle=%lu (pass unix mount/device)",
+                 (unsigned long)GetLastError());
+            CloseHandle(mgr);
+            return 0;
+        }
+        q = (struct mountmgr_unix_drive *)qbuf;
+        if (q->mount_point_offset)
+            mp = (char *)qbuf + q->mount_point_offset;
+        if (q->device_offset)
+            dev = (char *)qbuf + q->device_offset;
     }
-    q = (struct mountmgr_unix_drive *)qbuf;
-    if (q->mount_point_offset)
-        mp = (char *)qbuf + q->mount_point_offset;
-    if (q->device_offset)
-        dev = (char *)qbuf + q->device_offset;
     mp_n = mp ? strlen(mp) + 1 : 0;
-    dev_n = dev ? strlen(dev) + 1 : 0;
+    dev_n = (dev && dev[0]) ? strlen(dev) + 1 : 0;
     len = sizeof(struct mountmgr_unix_drive) + mp_n + dev_n;
     ioctl = (unsigned char *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, len);
     if (!ioctl) {
@@ -258,9 +264,15 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
 {
     char letter;
     int set_cdrom = 0;
+    char set_letter = 'D';
+    char unix_mount[MAX_PATH];
+    char unix_device[MAX_PATH];
+    char cmdcopy[1024];
+    char *tok;
     (void)inst;
     (void)prev;
     (void)show;
+    unix_mount[0] = unix_device[0] = 0;
     g_t0 = GetTickCount();
     g_log = fopen("Z:\\tmp\\ss1-cnc-cdprobe.log", "w");
     if (!g_log)
@@ -270,23 +282,49 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
     flog("cdprobe start pid=%lu cmd='%s'", (unsigned long)GetCurrentProcessId(),
          cmd ? cmd : "");
 
-    if (cmd && strstr(cmd, "--set-cdrom"))
-        set_cdrom = 1;
+    cmdcopy[0] = 0;
+    if (cmd)
+        lstrcpynA(cmdcopy, cmd, sizeof cmdcopy);
+    tok = strtok(cmdcopy, " \t");
+    while (tok) {
+        if (!lstrcmpiA(tok, "--set-cdrom")) {
+            set_cdrom = 1;
+            tok = strtok(NULL, " \t");
+            if (tok && tok[0] && tok[1] == 0) {
+                set_letter = tok[0];
+                tok = strtok(NULL, " \t");
+            }
+            if (tok) {
+                lstrcpynA(unix_mount, tok, sizeof unix_mount);
+                tok = strtok(NULL, " \t");
+            }
+            if (tok) {
+                lstrcpynA(unix_device, tok, sizeof unix_device);
+                tok = strtok(NULL, " \t");
+            }
+            continue;
+        }
+        tok = strtok(NULL, " \t");
+    }
 
     if (set_cdrom) {
         HKEY hk = 0;
+        char valname[4];
         if (RegCreateKeyExA(HKEY_LOCAL_MACHINE, "Software\\Wine\\Drives", 0, NULL,
                             0, KEY_SET_VALUE, NULL, &hk, NULL) == ERROR_SUCCESS) {
             const char *v = "cdrom";
-            RegSetValueExA(hk, "d:", 0, REG_SZ, (const BYTE *)v, 6);
-            RegSetValueExA(hk, "D:", 0, REG_SZ, (const BYTE *)v, 6);
+            valname[0] = (char)(set_letter | 0x20);
+            valname[1] = ':';
+            valname[2] = 0;
+            RegSetValueExA(hk, valname, 0, REG_SZ, (const BYTE *)v, 6);
+            valname[0] = (char)(set_letter & ~0x20);
+            RegSetValueExA(hk, valname, 0, REG_SZ, (const BYTE *)v, 6);
             RegCloseKey(hk);
-            flog("registry HKLM\\Software\\Wine\\Drives d:=cdrom");
+            flog("registry HKLM\\Software\\Wine\\Drives %c:=cdrom", set_letter);
         } else {
             flog("registry Drives create gle=%lu", (unsigned long)GetLastError());
         }
-        set_drive_cdrom('d');
-        set_drive_cdrom('D');
+        set_drive_cdrom(set_letter, unix_mount, unix_device);
     }
 
     for (letter = 'C'; letter <= 'Z'; letter++)

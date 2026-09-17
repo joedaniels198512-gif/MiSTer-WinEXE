@@ -31,8 +31,10 @@ Command & Conquer Gold (Nod Windows 95, not DOS `CONQUER.EXE`, not in git):
 ```
 
 Do not run the disc `SETUP.EXE` (16-bit InstallShield stub). OSD loads
-`Command & Conquer.wex`. DirectDraw diagnostic:
-[docs/CNC_DDRAW.md](../docs/CNC_DDRAW.md).
+`Command & Conquer.wex`. DirectDraw / CD diagnostic:
+[docs/CNC_DDRAW.md](../docs/CNC_DDRAW.md). The CD helper registers
+Wine D: as CD-ROM via `apps/diag/ss1-cnc-cdprobe.exe` (rebuild from
+`scripts/ss1-cnc-cdprobe.c`; not a C&C binary).
 
 Windows Media Player 9 (genuine XP SP3 9.00.00.4503, not in git):
 

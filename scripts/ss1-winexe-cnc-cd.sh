@@ -19,16 +19,47 @@ loop_for_mnt() {
   awk -v m="$MNT" '$2 == m { print $1; exit }' /proc/mounts
 }
 
+# Register D: with the running wineserver as a CD-ROM so GetDriveType
+# stays DRIVE_CDROM and GetVolumeInformation can read the ISO label.
+# Loop-mounted ISO otherwise leaves mountmgr unaware; volume queries then
+# return ERROR_INVALID_FUNCTION and C&C rejects the disc.
+mark_wine_cdrom() {
+  probe="$WIN/apps/diag/ss1-cnc-cdprobe.exe"
+  winebin="$WIN/bin/wine"
+  loop=$(loop_for_mnt)
+  device="$loop"
+  [ -n "$device" ] && [ -e "$device" ] || device="$ISO"
+  if [ ! -f "$probe" ] || [ ! -x "$winebin" ]; then
+    echo "cnc-cd: skip mountmgr mark (probe or wine missing)"
+    return 0
+  fi
+  export HOME="${HOME:-/root}"
+  export DISPLAY="${DISPLAY:-:0}"
+  export WINEPREFIX="$PREFIX"
+  export WINEARCH=win32
+  export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:-winemenubuilder.exe=d}"
+  if [ -f "$WIN/bin/ss1-x11-env.sh" ]; then
+    # shellcheck disable=SC1091
+    . "$WIN/bin/ss1-x11-env.sh"
+  fi
+  echo "cnc-cd: mountmgr DEFINE D: mount=$MNT device=$device"
+  WINEDEBUG=-all "$winebin" "$probe" --set-cdrom D "$MNT" "$device" || \
+    echo "cnc-cd: mountmgr mark failed" >&2
+}
+
 attach_wine_d() {
   mkdir -p "$PREFIX/dosdevices"
   ln -sfn "$MNT" "$PREFIX/dosdevices/d:"
   loop=$(loop_for_mnt)
   if [ -n "$loop" ] && [ -e "$loop" ]; then
     ln -sfn "$loop" "$PREFIX/dosdevices/d::"
+  elif [ -f "$ISO" ]; then
+    ln -sfn "$ISO" "$PREFIX/dosdevices/d::"
   else
     rm -f "$PREFIX/dosdevices/d::"
   fi
   echo "cnc-cd: D: -> $MNT (${loop:-no-loop})"
+  mark_wine_cdrom
 }
 
 case "$CMD" in

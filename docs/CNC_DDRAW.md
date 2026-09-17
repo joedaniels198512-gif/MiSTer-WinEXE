@@ -57,12 +57,37 @@ Does not write `C&C95.EXE`. After this lie:
 Wine Lock dumps still show real caps `0x8A00`. Only C&C’s local `dwCaps`
 was lied to.
 
-Next observed boundary (not a no-CD patch):
+## CD presentation (Wine D:)
 
-`Please insert a Command & Conquer CD into the CD-ROM drive.`
+Linux loop-mount of `CnC_NOD95.iso` plus `dosdevices/d:` → mount and
+`d::` → `/dev/loopN` is **not** enough. Win32 then reported:
 
-ISO helper already mounts `NOD95` with root `MOVIES.MIX` as Wine `D:`.
-CD presentation is a separate diagnostic.
+| API | Result |
+|---|---|
+| `GetDriveType(D:)` | `DRIVE_CDROM` (5) — C&C does enumerate D: |
+| `GetVolumeInformation(D:)` | **FAIL** `ERROR_INVALID_FUNCTION` (1), empty label |
+| `CreateFile(D:\movies.mix)` | OK |
+
+C&C imports `GetDriveTypeA`, `GetVolumeInformationA`, `CreateFileA`.
+It only treats a drive as a C&C CD when the type is CD-ROM **and** the
+label is `GDI95` / `NOD95` / `COVERT` **and** `MOVIES.MIX` opens.
+
+Wine 7.1 `GetVolumeInformation` uses mountmgr
+(`FileFsVolumeInformation` → `STATUS_NOT_IMPLEMENTED` if QUERY fails).
+`ss1-winexe-cnc-cd.sh` now calls `ss1-cnc-cdprobe.exe --set-cdrom`
+(`IOCTL_MOUNTMGR_DEFINE_UNIX_DRIVE`, same as winecfg). After that:
+
+`GetDriveType=5`, `label=NOD95`, `fs=CDFS`, `MOVIES.MIX` readable.
+
+C&C’s own log: `GetDriveTypeW c:\\ → 3`, `d:\\ → 5`, `z:\\ → 3`, then
+`GetVolumeInformationByHandleW`. The insert-CD dialog disappeared.
+
+**Next boundary (do not fix here):** privileged instruction at
+`C&C95` VA `0x004DD5B4` / RVA `0xDD5B4`:
+
+`mov edx, 0x3DA` / `in al, dx` / `test al, 08h` — VGA status / VBlank
+poll. Wine Application Error dialog. No EXE patch. Icon-cache
+`SYSTEMMEMORY` test at `0xC9507` was not reached.
 
 ## Later architecture (not started)
 
