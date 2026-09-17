@@ -59,3 +59,9 @@ looks like a missing `C:\SC2K\SIMCITY.EXE`.
 Do not overwrite `box86-ss1` or an existing on-device prefix. Extract the
 artifact to a new `wineprefix-prebuilt` directory, or refresh the ext4
 image, then remount.
+
+WMP9 natives are prefix-local only (`ss1-winexe-wmp9-install.sh`). Keep
+Wine `quartz.dll` / `msdmo.dll` / `qasf.dll`. Snapshot before large
+prefix edits with `scripts/ss1-winexe-prefix-backup.sh`. Multimedia
+sessions use sidecar `box86-gstflow`, not a replacement of original
+Box86. See [docs/WMP9_DSHOW.md](WMP9_DSHOW.md).

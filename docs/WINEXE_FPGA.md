@@ -11,11 +11,15 @@ acceleration, or CRT options to the RBF.
 ## Current runtime (2026-09-17)
 
 Proven on SuperStation One through this core: XP Notepad, XP Paint,
-Winamp 2.91 (physical audio + MP3), original Win95 SimCity 2000, USB
-mouse/keyboard, OSD input recovery. SC2K uses a 30 Hz presenter profile
-with skip-unchanged and 32×32 dirty spans; other apps stay at 60 Hz.
-The SC2K tool palette is kept above the map by
+Winamp 2.91 (physical audio + MP3), original Win95 SimCity 2000, genuine
+XP SP3 WMP9 UI, USB mouse/keyboard, OSD input recovery. SC2K uses a 30 Hz
+presenter profile with skip-unchanged and 32×32 dirty spans; other apps
+stay at 60 Hz. The SC2K tool palette is kept above the map by
 `scripts/ss1-winexe-sc2k-toolbar.sh` (X restack only; no FPGA change).
+
+WMP9 / DirectShow / GStreamer / WaveOut status (PCM physical audio
+proven; DirectSound crackles; custom `ss1waveout.ax` is preferred):
+[docs/WMP9_DSHOW.md](WMP9_DSHOW.md). Do not start C&C from this work.
 
 ```
 Wine / winex11
@@ -178,6 +182,8 @@ Next EXE on a live stack (Paint default): `scripts/ss1-winexe-run-exe.sh`
 Presenter: GHA `.github/workflows/build-winexe-presenter.yml` (ARM only).
 Winamp: `scripts/ss1-winexe-winamp.sh` (existing stack; stamps first-run/Gecko settings first).
 SimCity 2000: `scripts/ss1-winexe-sc2k.sh` (registry stamp + 30 Hz dirty profile + toolbar watcher).
+WMP9: `scripts/ss1-winexe-wmp9.sh` (box86-gstflow only; original Box86 untouched).
+DirectShow PCM harness: `scripts/ss1-winexe-dshow.sh` (`ss1waveout.ax`, no WMP).
 
 ## Presenter profiles (ARM only)
 
@@ -307,6 +313,16 @@ step after every OSD use.
 - `scripts/ss1-winexe-sc2k.sh` — SC2K 30 Hz + dirty + affinity + Explorer desktop
 - `scripts/ss1-winexe-sc2k-toolbar.sh` — keep SC2K tool palette above the map
 - `scripts/ss1-winexe-mem-wine.sh` — targeted Wine RSS/PSS snapshot
+- `docs/WMP9_DSHOW.md` — WMP9 / DirectShow / GStreamer / WaveOut status
+- `scripts/ss1-winexe-wmp9.sh` / `wmp9-install.sh` / `wmp9-config.sh` / `wmp9.reg` — genuine WMP9 (device-local XP files, not in git)
+- `scripts/ss1-winexe-wine-gstflow.sh` — WMP-session Wine loader (`box86-gstflow`)
+- `scripts/ss1-winexe-gst-env.sh` — private ARMHF GStreamer env
+- `scripts/patch-box86-gst.py` / `patch-box86-gst-dataflow.py` — Box86 GStreamer class + dataflow bridges
+- `scripts/ss1-gst-harness.c` / `ss1-gst-harness.sh` — i386 `filesrc → wavparse → fakesink` to EOS
+- `scripts/ss1-winexe-dshow.c` / `ss1-winexe-dshow.sh` — PE32 DirectShow PCM harness
+- `scripts/ss1-winexe-waveout.c` / `ss1-winexe-waveout.h` / `ss1waveout.def` — private WaveOut renderer
+- `scripts/ss1-winexe-prefix-backup.sh` — snapshot the ext4 prefix image
+- `scripts/ss1-winexe-cocreate.c` — CoCreate COM diagnostic
 
 Parked HPS `/dev/fb0` helpers (not the live WinEXE path):
 `scripts/ss1-xorg.sh`, `scripts/ss1-fb-present.sh`, `scripts/ss1-notepad.sh`,

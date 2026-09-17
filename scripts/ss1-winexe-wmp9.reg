@@ -1,0 +1,39 @@
+# XP SP3 in-box WMP9 (9.00.00.4503) first-run + paths from wmp.inf.
+# Stamped with wineserver stopped. No Gecko. No winetricks.
+
+[Software\\Microsoft\\MediaPlayer]
+"Installation Directory"="C:\\Program Files\\Windows Media Player"
+"Installation DirectoryLFN"="C:\\Program Files\\Windows Media Player"
+"SkinsDir"="C:\\Program Files\\Windows Media Player\\Skins"
+"VisualizationsDir"="C:\\Program Files\\Windows Media Player\\Visualizations"
+"IEInstall"="no"
+
+[Software\\Microsoft\\MediaPlayer\\Preferences]
+"AcceptedEULA"=dword:00000001
+
+[Software\\Microsoft\\MediaPlayer\\PlayerUpgrade]
+"EnableAutoUpgrade"="no"
+
+[Software\\Microsoft\\MediaPlayer\\9.0\\Registration]
+"UDBVersion"="9.0.0.4503"
+
+[Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\wmplayer.exe]
+@="C:\\Program Files\\Windows Media Player\\wmplayer.exe"
+"Path"="C:\\Program Files\\Windows Media Player"
+
+[Software\\Microsoft\\Multimedia\\WMPlayer]
+"Player.Path"="C:\\Program Files\\Windows Media Player\\wmplayer.exe"
+"Player.Name"="wmplayer.exe"
+"StandardVerb"="play"
+
+[Software\\Microsoft\\Windows NT\\CurrentVersion\\Drivers32]
+"msacm.l3acm"="l3codeca.acm"
+
+[Software\\Clients\\Media]
+@="Windows Media Player"
+
+[Software\\Clients\\Media\\Windows Media Player]
+@="Windows Media Player"
+
+[Software\\Clients\\Media\\Windows Media Player\\shell\\open\\command]
+@="C:\\Program Files\\Windows Media Player\\wmplayer.exe"

@@ -23,6 +23,16 @@ C:\SC2K\          # entire WIN95/SC2K/ folder, not only SIMCITY.EXE
 
 Saves belong under `C:\SC2K\Cities\`, not Program Files.
 
+Windows Media Player 9 (genuine XP SP3 9.00.00.4503, not in git):
+
+```
+/media/fat/Windows/apps/wmp9/   # extracted from the clean XP ISO
+```
+
+Install with `ss1-winexe-wmp9-install.sh`. That copies into the prefix
+only and does **not** overwrite Wine `quartz.dll`. See
+[docs/WMP9_DSHOW.md](../docs/WMP9_DSHOW.md).
+
 ## Launch
 
 ```sh
@@ -30,6 +40,7 @@ Saves belong under `C:\SC2K\Cities\`, not Program Files.
 /media/fat/Windows/bin/ss1-winexe-run-exe.sh mspaint.exe
 /media/fat/Windows/bin/ss1-winexe-winamp.sh
 /media/fat/Windows/bin/ss1-winexe-sc2k.sh
+/media/fat/Windows/bin/ss1-winexe-wmp9.sh
 ```
 
 `ss1-run-exe.sh` is the older parked `/dev/fb0` helper. Use the

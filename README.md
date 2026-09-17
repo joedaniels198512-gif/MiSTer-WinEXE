@@ -19,6 +19,10 @@ Wine 7.1 i386 → Box86 → dummy Xorg 640×480 RAM
   → WinEXE_Test.rbf ascal → HDMI
 ```
 
+Multimedia (WMP / DirectShow) uses **`box86-gstflow`** only. The original
+`box86` binary is the untouched rollback and remains the default Wine
+loader. Full write-up: [docs/WMP9_DSHOW.md](docs/WMP9_DSHOW.md).
+
 ### PROVEN
 
 * genuine XP Notepad (`apps/notepad.exe`, 5.1.2600.5512)
@@ -31,12 +35,48 @@ Wine 7.1 i386 → Box86 → dummy Xorg 640×480 RAM
 * 30 Hz + dirty-region SC2K optimization (skip unchanged frames, 32×32 dirty spans)
 * SC2K CPU affinity (SIMCITY on CPU0, presenter+Xorg on CPU1)
 * SC2K floating toolbar stays above the city map (`ss1-winexe-sc2k-toolbar.sh`)
+* genuine XP SP3 WMP9 9.00.00.4503 UI launches
+* Wine DirectShow PCM WAV graph (`RenderFile` → GStreamer splitter → renderer, `EC_COMPLETE`)
+* physical PCM audio on SuperStation
+* custom SS1 WaveOut renderer (`ss1waveout.ax`) substantially better than DirectSound
+
+### WMP9 / DirectShow / GStreamer / WaveOut status
+
+* **WMP UI works.** Genuine `wmplayer.exe` 9.00.00.4503 launches on the
+  existing WinEXE stack via `ss1-winexe-wmp9.sh` / `wine-gstflow`.
+* **PCM playback works.** Minimal graph under `box86-gstflow`: Reader →
+  GStreamer splitter → audio renderer. Duration, Running state, real-time
+  position, and `EC_COMPLETE` are proven.
+* **Physical audio works.** Heard on SuperStation HDMI/line out through
+  winealsa.
+* **DirectSound is unstable.** Wine 7.1 maps both `CLSID_AudioRender` and
+  `CLSID_DSoundRender` to the DirectSound renderer. It drops samples and
+  crackles even with no WMP. Do not treat registry merits as a WaveOut
+  fix. Do not load XP quartz.
+* **Custom WaveOut renderer is the current preferred path.** Private
+  CLSID `{B7E3C101-5A42-4D8F-9C1E-A1B2C3D4E5F6}`, `DllGetClassObject`
+  only (no `regsvr32`). Path: DirectShow → GStreamer splitter →
+  `ss1waveout.ax` → WinMM `waveOut*` → winealsa.
+* **Best-known config:** 12 × 30 ms buffers (~360 ms), prime 9 before
+  `waveOutRestart`, 44.1 kHz / 16-bit / stereo. Physical listen: seemed
+  really good. 30 s PCM: 5,292,000 bytes received = submitted =
+  completed, dropped 0. One ~1095 ms Receive stall at t≈15.3 s; remaining
+  stutter source is upstream producer/scheduling stalls, not WaveOut
+  dropping data.
+* **Not yet tested** through the final WaveOut path: MP3, WMP
+  visualisations, WMP memory usage, wiring `ss1waveout.ax` into actual
+  WMP9 (best audio so far is the harness).
+* Do **not** implement `IReferenceClock` yet. Do **not** replace original
+  Box86. Next session: integrate WaveOut into WMP9, then PCM/MP3/vis/RAM,
+  then checkpoint, then OSD app profiles. Do not start C&C.
 
 ### Frozen / do not casually change
 
-FPGA core sources and HDMI timing, dummy-X video path, Box86, Wine 7.1,
-and the prebuilt prefix layout. Application work should stay in launchers
-and the ARM presenter unless a specific app failure requires more.
+FPGA core sources and HDMI timing, dummy-X video path, the original
+Box86 binary, Wine 7.1, and the prebuilt prefix layout. Application work
+should stay in launchers and the ARM presenter unless a specific app
+failure requires more. Multimedia tests use sidecar `box86-gst` /
+`box86-gstflow` binaries only.
 
 ### Parked
 
@@ -46,15 +86,17 @@ See [docs/X11_RUNTIME.md](docs/X11_RUNTIME.md).
 
 ### Not in git (copyrighted / generated)
 
-Genuine EXEs, the SC2K tree, Winamp, MP3s, Wine prefix images, X11/host-libs
-tarballs, and compiled `.rbf` / presenter binaries. Rebuild those from
-Actions artifacts + your own media. See below.
+Genuine EXEs, the SC2K tree, Winamp, XP WMP9 binaries, MP3s, Wine prefix
+images, X11/host-libs tarballs, and compiled `.rbf` / presenter binaries.
+Rebuild those from Actions artifacts + your own media. See below.
 
 ## Layout on the SuperStation
 
 | Path | Role |
 |---|---|
-| `/media/fat/Windows/box86-ss1/box86` | Working Cortex-A9 Box86 |
+| `/media/fat/Windows/box86-ss1/box86` | Original Cortex-A9 Box86 (untouched rollback) |
+| `/media/fat/Windows/box86-ss1/box86-gst` | GStreamer factory/plugin Box86 (sidecar) |
+| `/media/fat/Windows/box86-ss1/box86-gstflow` | Working multimedia Box86 (sidecar; WMP/DShow) |
 | `/media/fat/Windows/wine-installer/opt/wine-devel/` | Wine 7.1 i386 |
 | `/media/fat/Windows/wineprefix-prebuilt.ext4` | Prefix image (loop-mounted) |
 | `/media/fat/Windows/wineprefix-prebuilt` | Mount point (`ss1-mount-prefix.sh`) |
@@ -73,6 +115,8 @@ Actions artifacts + your own media. See below.
 | `scripts/ss1-winexe-winamp.sh` | Stamp first-run/Gecko-off settings, launch Winamp 2.91 |
 | `scripts/ss1-winexe-sc2k.sh` | 30 Hz + dirty + affinity + registry stamp + toolbar watcher |
 | `scripts/ss1-winexe-stop-wine.sh` | End the current Wine session only (keep Xorg/presenter/input) |
+| `scripts/ss1-winexe-wmp9.sh` | Launch genuine WMP9 via `wine-gstflow` (does not replace original Box86) |
+| `scripts/ss1-winexe-dshow.sh` | PCM DirectShow harness → `ss1waveout.ax` (no WMP, no presenter) |
 
 Presenter profiles (`scripts/ss1-winexe-present-restart.sh`):
 
@@ -100,9 +144,11 @@ HDMI and dummy X stay 60 Hz. Only ARM DDR writes are paced.
    - `apps/notepad.exe`, `apps/mspaint.exe` (+ `MFC42u.dll` if Paint asks)
    - Winamp 2.91 into `C:\Program Files\Winamp`
    - Win95 `WIN95/SC2K/` tree to `C:\SC2K\`
+   - WMP9 files into `/media/fat/Windows/apps/wmp9/` then `ss1-winexe-wmp9-install.sh`
 6. Load `WinEXE_Test.rbf`, start dummy Xorg + presenter, then a launcher.
 
 Details: [docs/WINEXE_FPGA.md](docs/WINEXE_FPGA.md),
+[docs/WMP9_DSHOW.md](docs/WMP9_DSHOW.md),
 [docs/X11_RUNTIME.md](docs/X11_RUNTIME.md),
 [docs/WINE_PREFIX.md](docs/WINE_PREFIX.md),
 [docs/HOST_LIBS.md](docs/HOST_LIBS.md).
