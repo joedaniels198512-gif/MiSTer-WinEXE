@@ -7,6 +7,8 @@
 
 static const CLSID k_CLSID_GSTSplitter =
     {0xF9D8D64E, 0xA144, 0x47DC, {0x8E, 0xE0, 0xF5, 0x34, 0x98, 0x37, 0x2C, 0x29}};
+static const CLSID k_CLSID_WaveParser =
+    {0xD51BD5A1, 0x7548, 0x11CF, {0xA5, 0x20, 0x00, 0x80, 0xC7, 0x7E, 0xF5, 0x8A}};
 
 typedef HRESULT (WINAPI *PFN_DllGetClassObject)(REFCLSID, REFIID, void **);
 
@@ -182,7 +184,7 @@ static void enum_graph(IGraphBuilder *gb, int *n_ds, int *n_ss1, int *n_gst, int
             ds++;
         if (is_ss1_clsid(&id) || wcsstr(fi.achName, L"SS1 WaveOut"))
             ss1++;
-        if (guid_eq(&id, &k_CLSID_GSTSplitter) || guid_eq(&id, &CLSID_WaveParser) ||
+        if (guid_eq(&id, &k_CLSID_GSTSplitter) || guid_eq(&id, &k_CLSID_WaveParser) ||
             guid_eq(&id, &CLSID_AsyncReader))
             gst++;
         if (fi.pGraph)
@@ -246,7 +248,7 @@ static IPin *find_audio_src_pin(IGraphBuilder *gb)
         if (pin)
             return pin;
     }
-    f = find_filter_by_clsid(gb, &CLSID_WaveParser);
+    f = find_filter_by_clsid(gb, &k_CLSID_WaveParser);
     if (f) {
         pin = find_pin_dir(f, PINDIR_OUTPUT, 0);
         IBaseFilter_Release(f);
