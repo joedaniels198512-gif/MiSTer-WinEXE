@@ -1,0 +1,77 @@
+name: Build Cortex-A9 Box86 GStreamer dataflow bridge
+
+# Third Box86 binary: original box86-ss1, working box86-gst, this box86-gstflow.
+# Applies class-bridge then GstBaseSrc/PushSrc/BaseSink + GstPad instance patches.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "scripts/patch-box86-gst.py"
+      - "scripts/patch-box86-gst-dataflow.py"
+      - ".github/workflows/build-box86-gstflow.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  compile-box86-gstflow:
+    name: Cross-compile box86-gstflow (Cortex-A9, glibc 2.31)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Box86 dataflow binary
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$GITHUB_WORKSPACE:/src" -w /src ubuntu:20.04 bash -lc '
+            set -euo pipefail
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update
+            apt-get install -y --no-install-recommends \
+              ca-certificates git cmake make python3 python3-minimal \
+              gcc-arm-linux-gnueabihf libc6-dev-armhf-cross \
+              file binutils
+            git clone --depth 1 https://github.com/ptitSeb/box86.git /tmp/box86
+            python3 /src/scripts/patch-box86-gst.py /tmp/box86
+            python3 /src/scripts/patch-box86-gst-dataflow.py /tmp/box86
+            git -C /tmp/box86 rev-parse HEAD > /src/box86-gstflow.sha
+            git -C /tmp/box86 log -1 --oneline > /src/box86-gstflow.gitlog
+            mkdir -p /tmp/box86/build-ss1
+            cd /tmp/box86/build-ss1
+            cmake .. \
+              -DCMAKE_SYSTEM_NAME=Linux \
+              -DCMAKE_SYSTEM_PROCESSOR=arm \
+              -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
+              -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc \
+              -DCMAKE_ASM_COMPILER=arm-linux-gnueabihf-gcc \
+              -DARM_DYNAREC=ON \
+              -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+              -DCMAKE_C_FLAGS="-marm -mcpu=cortex-a9 -mfpu=neon-vfpv3 -mfloat-abi=hard" \
+              -DCMAKE_ASM_FLAGS="-marm -mcpu=cortex-a9 -mfpu=neon-vfpv3 -mfloat-abi=hard"
+            cmake --build . -j"$(nproc)"
+            cp -a box86 /src/box86-gstflow
+            file /src/box86-gstflow
+            echo "=== SDIV/UDIV check ==="
+            arm-linux-gnueabihf-objdump -d /src/box86-gstflow | grep -E "[[:space:]](sdiv|udiv)[[:space:]]" | head || echo "NO_SDIV_UDIV_FOUND"
+            echo "=== GLIBC symbols ==="
+            arm-linux-gnueabihf-objdump -T /src/box86-gstflow | awk "/GLIBC_/ {print \$NF}" | sort -u
+            {
+              echo "name=box86-gstflow"
+              echo "box86_sha=$(cat /src/box86-gstflow.sha)"
+              echo "patch=scripts/patch-box86-gst.py + scripts/patch-box86-gst-dataflow.py"
+              echo "flags=-marm -mcpu=cortex-a9 -mfpu=neon-vfpv3 -mfloat-abi=hard ARM_DYNAREC=ON RelWithDebInfo"
+              echo "host=ubuntu:20.04 gcc-arm-linux-gnueabihf"
+            } > /src/box86-gstflow.notes
+          '
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: box86-gstflow
+          path: |
+            box86-gstflow
+            box86-gstflow.sha
+            box86-gstflow.gitlog
+            box86-gstflow.notes
+          if-no-files-found: error
