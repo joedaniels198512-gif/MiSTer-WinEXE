@@ -74,6 +74,9 @@ static int (*p_gst_element_query_position)(GstElement *, int, int64_t *);
 static int (*p_gst_element_query_duration)(GstElement *, int, int64_t *);
 static GstBus *(*p_gst_element_get_bus)(GstElement *);
 static GstMessage *(*p_gst_bus_timed_pop_filtered)(GstBus *, GstClockTime, int);
+static GstMessage *(*p_gst_bus_pop)(GstBus *);
+static GstMessage *(*p_gst_bus_peek)(GstBus *);
+static gboolean (*p_gst_bus_have_pending)(GstBus *);
 static void (*p_gst_util_set_object_arg)(void *, const gchar *, const gchar *);
 static void (*p_gst_message_unref)(void *);
 static void (*p_gst_message_parse_error)(GstMessage *, void **, gchar **);
@@ -344,6 +347,10 @@ static int run_pipeline(const char *wav)
     }
     flush_print("AFTER gst_element_link\n");
 
+    /* Hold the pipeline bus before PLAYING so queued STATE_CHANGED/EOS are not missed. */
+    bus = p_gst_element_get_bus(pipeline);
+    flush_print("BUS watch mask=0x%x bus=%p\n", GST_BUS_WATCH, (void *)bus);
+
     flush_print("BEFORE gst_element_set_state PLAYING\n");
     set_ret = p_gst_element_set_state(pipeline, GST_STATE_PLAYING);
     flush_print("AFTER gst_element_set_state PLAYING ret=%d (%s)\n",
@@ -355,15 +362,32 @@ static int run_pipeline(const char *wav)
 
     print_get_state(pipeline, "after_set_playing", 2 * GST_SECOND);
     print_query(pipeline, "after_set_playing");
+    flush_print("BUS have_pending=%d after_get_state\n",
+                p_gst_bus_have_pending && bus ? p_gst_bus_have_pending(bus) : -1);
 
-    bus = p_gst_element_get_bus(pipeline);
-    flush_print("BUS watch mask=0x%x bus=%p\n", GST_BUS_WATCH, (void *)bus);
+    /*
+     * Native GST_BUS traces show timed_pop_filtered actually dequeues EOS, but the
+     * Box86 pFpUi trampoline returns NULL to x86. Drain with gst_bus_pop (pFp)
+     * which already works for factory_find/get_bus pointer returns.
+     */
     for (polls = 0; polls < max_polls && !saw_eos && !saw_error; polls++) {
-        flush_print("BEFORE gst_bus_timed_pop_filtered poll=%d timeout=250ms\n", polls);
-        msg = p_gst_bus_timed_pop_filtered ? p_gst_bus_timed_pop_filtered(
-                  bus, GST_SECOND / 4, GST_BUS_WATCH) : NULL;
-        flush_print("AFTER gst_bus_timed_pop_filtered poll=%d msg=%p\n", polls, (void *)msg);
+        int pending = p_gst_bus_have_pending && bus ? p_gst_bus_have_pending(bus) : -1;
+        GstMessage *peeked = (p_gst_bus_peek && bus) ? p_gst_bus_peek(bus) : NULL;
+        flush_print("BUS poll=%d have_pending=%d peek=%p\n", polls, pending, (void *)peeked);
+        if (peeked && p_gst_message_unref)
+            p_gst_message_unref(peeked);
+
+        msg = NULL;
+        if (pending && p_gst_bus_pop)
+            msg = p_gst_bus_pop(bus);
+        if (!msg && p_gst_bus_timed_pop_filtered) {
+            flush_print("BEFORE gst_bus_timed_pop_filtered poll=%d timeout=250ms\n", polls);
+            msg = p_gst_bus_timed_pop_filtered(bus, GST_SECOND / 4, GST_BUS_WATCH);
+            flush_print("AFTER gst_bus_timed_pop_filtered poll=%d msg=%p\n",
+                        polls, (void *)msg);
+        }
         if (!msg) {
+            usleep(250000);
             print_get_state(pipeline, "idle_poll", 0);
             print_query(pipeline, "idle_poll");
             continue;
@@ -456,6 +480,9 @@ int main(int argc, char **argv)
     p_gst_element_query_duration = try_dlsym("gst_element_query_duration");
     p_gst_element_get_bus = try_dlsym("gst_element_get_bus");
     p_gst_bus_timed_pop_filtered = try_dlsym("gst_bus_timed_pop_filtered");
+    p_gst_bus_pop = try_dlsym("gst_bus_pop");
+    p_gst_bus_peek = try_dlsym("gst_bus_peek");
+    p_gst_bus_have_pending = try_dlsym("gst_bus_have_pending");
     p_gst_util_set_object_arg = try_dlsym("gst_util_set_object_arg");
     p_gst_message_unref = try_dlsym("gst_message_unref");
     p_gst_message_parse_error = try_dlsym("gst_message_parse_error");
