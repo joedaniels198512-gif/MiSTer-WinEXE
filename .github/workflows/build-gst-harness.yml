@@ -1,6 +1,6 @@
 name: Build i386 GStreamer Box86 harness
 
-# 32-bit x86 ELF against Bullseye GStreamer 1.18. Do not compile on the SS1.
+# 32-bit x86 ELF, glibc 2.31 (Ubuntu 20.04). dlopen() libgstreamer at runtime.
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   compile-i386-harness:
-    name: Cross-compile ss1-gst-harness (i386, GStreamer 1.18)
+    name: Cross-compile ss1-gst-harness (i386, glibc 2.31)
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     steps:
@@ -23,7 +23,7 @@ jobs:
       - name: Build i386 harness in Debian Bullseye
         run: |
           set -euo pipefail
-          docker run --rm -v "$GITHUB_WORKSPACE:/src" -w /src debian:bullseye bash -lc '
+          docker run --rm -v "$GITHUB_WORKSPACE:/src" -w /src ubuntu:20.04 bash -lc '
             set -euo pipefail
             apt-get update
             DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
