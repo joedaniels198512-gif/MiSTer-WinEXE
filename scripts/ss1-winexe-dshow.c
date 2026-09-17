@@ -11,13 +11,15 @@
 #include <stdio.h>
 
 static const WCHAR kWav[] = L"C:\\tone.wav";
+static const WCHAR kWaveParser[] = L"{D51BD5A1-7548-11CF-A520-0080C77EF58A}";
+static const WCHAR kAudioRender[] = L"{E30629D1-27E5-11CE-875D-00608CB78066}";
+
+static void print_hr(const char *label, HRESULT hr);
 
 static int utf8_to_wide(const char *s, WCHAR *out, int nout)
 {
     return MultiByteToWideChar(CP_ACP, 0, s, -1, out, nout);
 }
-static const WCHAR kWaveParser[] = L"{D51BD5A1-7548-11CF-A520-0080C77EF58A}";
-static const WCHAR kAudioRender[] = L"{E30629D1-27E5-11CE-875D-00608CB78066}";
 
 static IBaseFilter *find_filter_clsid(IGraphBuilder *gb, REFCLSID want)
 {
