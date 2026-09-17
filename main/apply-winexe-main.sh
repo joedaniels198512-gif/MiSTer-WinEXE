@@ -73,8 +73,8 @@ if "winexe_status_event" not in cpp:
         re.S,
     )
     must(m, "user_io.cpp: user_io_status_set tail not found")
-    insert_at = m.end() - 1  # strip the function-closing '}'
-    cpp = cpp[:insert_at] + "\tif (is_winexe() && value) winexe_status_event(opt, value);\n}"
+    insert_at = m.end() - 1  # last '}' of user_io_status_set
+    cpp = cpp[:insert_at] + "\tif (is_winexe() && value) winexe_status_event(opt, value);\n}" + cpp[m.end():]
     print("patched user_io.cpp winexe_status_event")
 
 cpp_path.write_text(cpp, encoding="utf-8")
@@ -96,3 +96,7 @@ else:
 PY
 
 echo "WinEXE hook applied in $MAIN"
+# Guard: the status_set insert must not truncate user_io.cpp.
+grep -q 'user_io_get_confstr' "$MAIN/user_io.cpp"
+grep -q 'winexe_status_event' "$MAIN/user_io.cpp"
+wc -l "$MAIN/user_io.cpp"
