@@ -100,7 +100,7 @@ echo "===== wine mem before ====="
 alsa before | tee -a "$LOG"
 
 # Background; leave playing for physical listen. 30s WAV + Wine startup.
-timeout 80 stdbuf -oL -eL "$BOX86" "$WINEELF" "$EXE" "C:\\tone30.wav" >>"$LOG" 2>&1 &
+timeout 100 stdbuf -oL -eL "$BOX86" "$WINEELF" "$EXE" "C:\\tone30.wav" >>"$LOG" 2>&1 &
 WPID=$!
 echo $WPID > /tmp/ss1-wine.pid
 echo "PLAYING pid=$WPID — leave this running for physical listen"
@@ -120,5 +120,7 @@ for d in /proc/[0-9]*; do
       ;;
   esac
 done
+echo "===== ss1wo t+20s =====" | tee -a "$LOG"
+grep -E "SS1WO:|STARVE|WOM_DONE|waveOut|EC_COMPLETE|FILTER |force_ss1|graph has no|POS |DURATION|STATE |Run |FAIL|underrun|Underrun" "$LOG" | tail -90 | tee -a /dev/stderr
 echo "log=$LOG — harness still running; not waiting so the tone stays audible"
 exit 0
