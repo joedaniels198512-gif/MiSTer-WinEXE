@@ -20,7 +20,7 @@ for d in os.listdir("/proc"):
         cmd = open("/proc/%s/cmdline" % d, "rb").read().replace(b"\0", b" ").decode("latin1")
     except OSError:
         continue
-    if cmd.startswith("/media/fat/MiSTer "):
+    if cmd.startswith("/media/fat/MiSTer ") or cmd.startswith("/media/fat/MiSTer_WinEXE"):
         pid = int(d)
         break
 if pid is None:
