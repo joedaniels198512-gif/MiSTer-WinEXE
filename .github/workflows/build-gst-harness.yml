@@ -1,0 +1,55 @@
+name: Build i386 GStreamer Box86 harness
+
+# 32-bit x86 ELF against Bullseye GStreamer 1.18. Do not compile on the SS1.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "scripts/ss1-gst-harness.c"
+      - ".github/workflows/build-gst-harness.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  compile-i386-harness:
+    name: Cross-compile ss1-gst-harness (i386, GStreamer 1.18)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build i386 harness in Debian Bullseye
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$GITHUB_WORKSPACE:/src" -w /src debian:bullseye bash -lc '
+            set -euo pipefail
+            SNAP=http://snapshot.debian.org/archive/debian/20220419T021707Z
+            printf "deb %s bullseye main\n" "$SNAP" > /etc/apt/sources.list
+            printf "Acquire::Check-Valid-Until \"false\";\n" > /etc/apt/apt.conf.d/99snapshot
+            dpkg --add-architecture i386
+            apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+              gcc gcc-multilib libc6-dev:i386 \
+              libgstreamer1.0-dev:i386 libglib2.0-dev:i386 \
+              pkg-config file binutils
+            export PKG_CONFIG_PATH=/usr/lib/i386-linux-gnu/pkgconfig
+            export PKG_CONFIG_LIBDIR=/usr/lib/i386-linux-gnu/pkgconfig
+            CFLAGS=$(pkg-config --cflags gstreamer-1.0)
+            LIBS=$(pkg-config --libs gstreamer-1.0)
+            gcc -m32 -O2 -Wall -g0 \
+              -o ss1-gst-harness scripts/ss1-gst-harness.c \
+              $CFLAGS $LIBS
+            file ss1-gst-harness
+            readelf -h ss1-gst-harness | grep -E "Class|Machine"
+            readelf -d ss1-gst-harness | grep NEEDED
+            echo "=== GLIBC symbols ==="
+            objdump -T ss1-gst-harness | awk "/GLIBC_/ {print \$NF}" | sort -u
+          '
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ss1-gst-harness
+          path: ss1-gst-harness
+          if-no-files-found: error
