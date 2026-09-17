@@ -18,7 +18,6 @@ is_wine_comm() {
     wineserver|wine|wine-preloader|start.exe|explorer.exe| \
     winamp.exe|Winamp.exe|mspaint.exe|notepad.exe|NOTEPAD.EXE| \
     wmplayer.exe|WMPLAYER.EXE|wmplayer.ex| \
-    ss1-winexe-dsho|ss1-winexe-dshow.exe| \
     SIMCITY.EXE|simcity.exe|SIMCITY.exe| \
     services.exe|rpcss.exe|winedevice.exe|plugplay.exe| \
     wineboot.exe|control.exe|svchost.exe|conhost.exe| \

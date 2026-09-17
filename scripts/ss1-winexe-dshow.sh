@@ -6,8 +6,9 @@ WIN="${WIN:-/media/fat/Windows}"
 BOX86="${BOX86:-$WIN/box86-ss1/box86-gstflow}"
 WINEELF="$WIN/wine-installer/opt/wine-devel/bin/wine"
 EXE="${EXE:-$WIN/bin/ss1-winexe-dshow.exe}"
-LOG="${LOG:-$WIN/logs/ss1-winexe-dshow-waveout.log}"
+LOG="${LOG:-$WIN/logs/ss1-winexe-dshow-ss1waveout.log}"
 PREFIX="${WINEPREFIX:-$WIN/wineprefix-prebuilt}"
+AX="${AX:-$WIN/bin/ss1waveout.ax}"
 
 mem() {
   awk '/^MemAvailable:/{a=$2} /^MemFree:/{f=$2} /^AnonPages:/{n=$2} END{printf "MemAvailable=%s MemFree=%s AnonPages=%s\n", a, f, n}' /proc/meminfo
@@ -25,12 +26,13 @@ alsa() {
 
 echo "===== before ====="
 mem
-ls -l "$BOX86" "$WIN/box86-ss1/box86" "$EXE" 2>/dev/null
+ls -l "$BOX86" "$WIN/box86-ss1/box86" "$EXE" "$AX" 2>/dev/null
 "$BOX86" -v 2>&1 | head -2
 
 [ -x "$BOX86" ] || { echo "missing $BOX86" >&2; exit 1; }
 [ -x "$WINEELF" ] || { echo "missing $WINEELF" >&2; exit 1; }
 [ -f "$EXE" ] || { echo "missing $EXE" >&2; exit 1; }
+[ -f "$AX" ] || { echo "missing $AX" >&2; exit 1; }
 [ -x "$WIN/box86-ss1/box86" ] || { echo "original box86 missing" >&2; exit 1; }
 
 "$WIN/bin/ss1-mount-prefix.sh" || exit 1
@@ -63,6 +65,12 @@ if [ ! -f "$WAV30" ]; then
 fi
 ls -l "$WAV30" "$PREFIX/drive_c/tone.wav"
 
+# Stage the renderer where the PE32 harness LoadLibrary looks. Do not
+# regsvr32 — Phase 1 uses DllGetClassObject only.
+cp -f "$AX" "$PREFIX/drive_c/windows/system32/ss1waveout.ax"
+cp -f "$AX" "$PREFIX/drive_c/ss1waveout.ax"
+ls -l "$PREFIX/drive_c/windows/system32/ss1waveout.ax" "$PREFIX/drive_c/ss1waveout.ax"
+
 export WINELOADER="$WINEELF"
 export WINESERVER="${WINESERVER:-$WIN/bin/wineserver}"
 export WINEDLLOVERRIDES="winemenubuilder.exe=d;mshtml=d;ieframe=d"
@@ -92,15 +100,16 @@ echo "===== wine mem before ====="
 alsa before | tee -a "$LOG"
 
 # Background; leave playing for physical listen. 30s WAV + Wine startup.
-timeout 55 stdbuf -oL -eL "$BOX86" "$WINEELF" "$EXE" "C:\\tone30.wav" >>"$LOG" 2>&1 &
+timeout 80 stdbuf -oL -eL "$BOX86" "$WINEELF" "$EXE" "C:\\tone30.wav" >>"$LOG" 2>&1 &
 WPID=$!
 echo $WPID > /tmp/ss1-wine.pid
 echo "PLAYING pid=$WPID — leave this running for physical listen"
-sleep 6
-echo "===== wine mem t+6s =====" | tee -a "$LOG"
+# wineboot can take ~15s; sample once playback should have started.
+sleep 20
+echo "===== wine mem t+20s =====" | tee -a "$LOG"
 [ -x "$WIN/bin/ss1-winexe-mem-wine.sh" ] && "$WIN/bin/ss1-winexe-mem-wine.sh" | tee -a "$LOG"
-alsa t+6s | tee -a "$LOG"
-echo "===== cpu t+6s ====="
+alsa t+20s | tee -a "$LOG"
+echo "===== cpu t+20s ====="
 awk '/^cpu /{print}' /proc/stat
 for d in /proc/[0-9]*; do
   c=$(cat "$d/comm" 2>/dev/null) || continue

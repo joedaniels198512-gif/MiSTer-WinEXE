@@ -5,6 +5,9 @@ on:
   push:
     paths:
       - "scripts/ss1-winexe-dshow.c"
+      - "scripts/ss1-winexe-waveout.c"
+      - "scripts/ss1-winexe-waveout.h"
+      - "scripts/ss1waveout.def"
       - ".github/workflows/build-dshow-harness.yml"
 
 permissions:
@@ -12,13 +15,13 @@ permissions:
 
 jobs:
   compile-pe32:
-    name: Cross-compile ss1-winexe-dshow.exe (i686-mingw)
+    name: Cross-compile ss1-winexe-dshow.exe + ss1waveout.ax (i686-mingw)
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build PE32 DirectShow tester
+      - name: Build PE32 DirectShow tester and WaveOut renderer
         run: |
           set -euo pipefail
           sudo apt-get update
@@ -29,9 +32,21 @@ jobs:
             -lole32 -loleaut32 -lstrmiids -luuid
           file ss1-winexe-dshow.exe
           i686-w64-mingw32-objdump -p ss1-winexe-dshow.exe | grep -E 'Magic|subsystem|DLL Name' | head -40
+          i686-w64-mingw32-gcc -O2 -Wall -s -shared \
+            -o ss1waveout.ax scripts/ss1-winexe-waveout.c scripts/ss1waveout.def \
+            -Wl,--kill-at \
+            -lole32 -loleaut32 -lwinmm -lstrmiids -luuid
+          file ss1waveout.ax
+          i686-w64-mingw32-objdump -p ss1waveout.ax | grep -E 'Magic|subsystem|DLL Name|DllGetClassObject|DllCanUnloadNow' | head -50
 
       - uses: actions/upload-artifact@v4
         with:
           name: ss1-winexe-dshow.exe
           path: ss1-winexe-dshow.exe
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ss1waveout.ax
+          path: ss1waveout.ax
           if-no-files-found: error

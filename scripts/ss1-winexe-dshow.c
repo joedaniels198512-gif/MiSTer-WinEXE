@@ -9,12 +9,18 @@
 #include <ole2.h>
 #include <dshow.h>
 #include <stdio.h>
+#include <initguid.h>
+#include "ss1-winexe-waveout.h"
 
 static const WCHAR kWav[] = L"C:\\tone.wav";
 static const WCHAR kWaveParser[] = L"{D51BD5A1-7548-11CF-A520-0080C77EF58A}";
-static const WCHAR kAudioRender[] = L"{E30629D1-27E5-11CE-875D-00608CB78066}";
+static const CLSID CLSID_GSTSplitter =
+    {0xF9D8D64E, 0xA144, 0x47DC, {0x8E, 0xE0, 0xF5, 0x34, 0x98, 0x37, 0x2C, 0x29}};
+
+static HMODULE g_ss1wo;
 
 static void print_hr(const char *label, HRESULT hr);
+static void print_w(const char *label, const WCHAR *w);
 
 static int utf8_to_wide(const char *s, WCHAR *out, int nout)
 {
@@ -72,72 +78,162 @@ static IPin *find_pin(IBaseFilter *f, PIN_DIRECTION want, int must_connected)
     return found;
 }
 
-/* RenderFile picks DSound. Swap in quartz WaveOut (CLSID_AudioRender) and
- * ConnectDirect so Intelligent Connect cannot put DSound back. */
-static HRESULT force_waveout(IGraphBuilder *gb)
+typedef HRESULT (WINAPI *PFN_DllGetClassObject)(REFCLSID, REFIID, void **);
+
+static void path_dir_ax(WCHAR *path, int npath)
 {
-    IBaseFilter *ds = NULL, *wo = NULL;
+    WCHAR *slash = NULL;
+    WCHAR *p;
+    GetModuleFileNameW(NULL, path, npath);
+    for (p = path; *p; p++) {
+        if (*p == L'\\' || *p == L'/')
+            slash = p;
+    }
+    if (slash)
+        slash[1] = 0;
+    else
+        path[0] = 0;
+    lstrcatW(path, L"ss1waveout.ax");
+}
+
+static HRESULT load_ss1_waveout(IBaseFilter **out)
+{
+    WCHAR paths[4][MAX_PATH];
+    UINT i, n = 0;
+    PFN_DllGetClassObject pfn;
+    IClassFactory *cf = NULL;
+    HRESULT hr = E_FAIL;
+
+    if (!out)
+        return E_POINTER;
+    *out = NULL;
+
+    lstrcpyW(paths[n++], L"C:\\windows\\system32\\ss1waveout.ax");
+    lstrcpyW(paths[n++], L"C:\\ss1waveout.ax");
+    path_dir_ax(paths[n++], MAX_PATH);
+    lstrcpyW(paths[n++], L"ss1waveout.ax");
+
+    for (i = 0; i < n && !g_ss1wo; i++) {
+        g_ss1wo = LoadLibraryW(paths[i]);
+        printf("LoadLibraryW ");
+        print_w("path", paths[i]);
+        printf("LoadLibraryW handle=%p gle=%lu\n", (void *)g_ss1wo, (unsigned long)GetLastError());
+        fflush(stdout);
+    }
+    if (!g_ss1wo)
+        return HRESULT_FROM_WIN32(ERROR_MOD_NOT_FOUND);
+
+    pfn = (PFN_DllGetClassObject)GetProcAddress(g_ss1wo, "DllGetClassObject");
+    if (!pfn) {
+        printf("FAIL GetProcAddress DllGetClassObject gle=%lu\n",
+               (unsigned long)GetLastError());
+        return HRESULT_FROM_WIN32(ERROR_PROC_NOT_FOUND);
+    }
+    hr = pfn(&CLSID_SS1WaveOut, &IID_IClassFactory, (void **)&cf);
+    print_hr("DllGetClassObject SS1WaveOut", hr);
+    if (FAILED(hr) || !cf)
+        return FAILED(hr) ? hr : E_FAIL;
+    hr = IClassFactory_CreateInstance(cf, NULL, &IID_IBaseFilter, (void **)out);
+    print_hr("SS1WaveOut CreateInstance", hr);
+    IClassFactory_Release(cf);
+    if (SUCCEEDED(hr) && *out) {
+        IPersist *persist = NULL;
+        CLSID id;
+        WCHAR *clsidw = NULL;
+        ZeroMemory(&id, sizeof id);
+        if (SUCCEEDED(IBaseFilter_QueryInterface(*out, &IID_IPersist, (void **)&persist)) && persist) {
+            if (SUCCEEDED(IPersist_GetClassID(persist, &id)) &&
+                SUCCEEDED(StringFromCLSID(&id, &clsidw)) && clsidw) {
+                print_w("SS1WaveOut GetClassID", clsidw);
+                CoTaskMemFree(clsidw);
+            }
+            IPersist_Release(persist);
+        }
+        if (!IsEqualGUID(&id, &CLSID_SS1WaveOut)) {
+            printf("FAIL SS1WaveOut GetClassID is not the private CLSID\n");
+            IBaseFilter_Release(*out);
+            *out = NULL;
+            return E_FAIL;
+        }
+    }
+    return hr;
+}
+
+/* RenderFile picks DSound. Swap in ss1waveout.ax and ConnectDirect so
+ * Intelligent Connect cannot put DSound back. */
+static HRESULT force_ss1_waveout(IGraphBuilder *gb)
+{
+    IBaseFilter *ds = NULL, *wo = NULL, *gst = NULL, *still = NULL;
     IPin *dsin = NULL, *split = NULL, *woin = NULL;
     HRESULT hr;
 
-    hr = CoCreateInstance(&CLSID_AudioRender, NULL, CLSCTX_INPROC_SERVER,
-                          &IID_IBaseFilter, (void **)&wo);
-    print_hr("CLSID_AudioRender CoCreate", hr);
+    hr = load_ss1_waveout(&wo);
+    print_hr("load_ss1_waveout", hr);
     if (FAILED(hr) || !wo)
-        return hr;
+        return FAILED(hr) ? hr : E_FAIL;
 
     ds = find_filter_clsid(gb, &CLSID_DSoundRender);
-    if (!ds) {
-        printf("FAIL no DirectSound renderer in graph\n");
-        IBaseFilter_Release(wo);
-        return E_FAIL;
+    if (ds) {
+        dsin = find_pin(ds, PINDIR_INPUT, 1);
+        if (dsin) {
+            hr = IPin_ConnectedTo(dsin, &split);
+            print_hr("DSound ConnectedTo", hr);
+        }
+        if (dsin) {
+            hr = IGraphBuilder_Disconnect(gb, dsin);
+            print_hr("Disconnect DSound input", hr);
+        }
+        if (split) {
+            hr = IGraphBuilder_Disconnect(gb, split);
+            print_hr("Disconnect splitter output", hr);
+        }
+        hr = IGraphBuilder_RemoveFilter(gb, ds);
+        print_hr("RemoveFilter DSound", hr);
+        IBaseFilter_Release(ds);
+        ds = NULL;
+        if (dsin) {
+            IPin_Release(dsin);
+            dsin = NULL;
+        }
+    } else {
+        printf("no DirectSound renderer after RenderFile; using GStreamer splitter pin\n");
+    }
+    if (!split) {
+        gst = find_filter_clsid(gb, &CLSID_GSTSplitter);
+        if (gst) {
+            split = find_pin(gst, PINDIR_OUTPUT, 0);
+            IBaseFilter_Release(gst);
+        }
     }
 
-    dsin = find_pin(ds, PINDIR_INPUT, 1);
-    if (dsin) {
-        hr = IPin_ConnectedTo(dsin, &split);
-        print_hr("DSound ConnectedTo", hr);
-    }
-    if (dsin) {
-        hr = IGraphBuilder_Disconnect(gb, dsin);
-        print_hr("Disconnect DSound input", hr);
-    }
-    if (split) {
-        hr = IGraphBuilder_Disconnect(gb, split);
-        print_hr("Disconnect splitter output", hr);
-    }
-
-    hr = IGraphBuilder_RemoveFilter(gb, ds);
-    print_hr("RemoveFilter DSound", hr);
-    IBaseFilter_Release(ds);
-    if (dsin)
-        IPin_Release(dsin);
-
-    hr = IGraphBuilder_AddFilter(gb, wo, L"waveout");
-    print_hr("AddFilter WaveOut", hr);
+    hr = IGraphBuilder_AddFilter(gb, wo, SS1_WO_FILTER_NAME);
+    print_hr("AddFilter SS1 WaveOut", hr);
     if (FAILED(hr))
         goto done;
 
     woin = find_pin(wo, PINDIR_INPUT, 0);
     if (!woin || !split) {
-        printf("FAIL WaveOut input or splitter output pin missing\n");
+        printf("FAIL SS1 WaveOut input or splitter output pin missing woin=%p split=%p\n",
+               (void *)woin, (void *)split);
         hr = E_FAIL;
         goto done;
     }
     hr = IGraphBuilder_ConnectDirect(gb, split, woin, NULL);
-    print_hr("ConnectDirect splitter->WaveOut", hr);
+    print_hr("ConnectDirect splitter->SS1WaveOut", hr);
     if (FAILED(hr)) {
         printf("FAIL refusing IGraphBuilder_Connect (would allow DSound again)\n");
         goto done;
     }
-    {
-        IBaseFilter *still = find_filter_clsid(gb, &CLSID_DSoundRender);
-        if (still) {
-            printf("FAIL DirectSound still in graph after WaveOut swap\n");
-            IBaseFilter_Release(still);
-            hr = E_FAIL;
-        }
+
+    still = find_filter_clsid(gb, &CLSID_DSoundRender);
+    if (still) {
+        printf("FAIL DirectSound still in graph after SS1 WaveOut swap\n");
+        IBaseFilter_Release(still);
+        hr = E_FAIL;
+        goto done;
     }
+    printf("graph has no DirectSound renderer\n");
+    fflush(stdout);
 
 done:
     if (woin)
@@ -273,11 +369,6 @@ int main(int argc, char **argv)
         CoUninitialize();
         return 3;
     }
-    hr = try_clsid("AudioRenderWaveOut", kAudioRender);
-    if (FAILED(hr)) {
-        CoUninitialize();
-        return 3;
-    }
 
     hr = CoCreateInstance(&CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER,
                           &IID_IGraphBuilder, (void **)&gb);
@@ -295,9 +386,9 @@ int main(int argc, char **argv)
     if (FAILED(hr))
         goto out;
 
-    hr = force_waveout(gb);
-    print_hr("force_waveout", hr);
-    printf("FILTERS after WaveOut swap\n");
+    hr = force_ss1_waveout(gb);
+    print_hr("force_ss1_waveout", hr);
+    printf("FILTERS after SS1 WaveOut swap\n");
     enum_filters(gb);
     if (FAILED(hr)) {
         rc = hr;
@@ -396,6 +487,10 @@ out:
     if (gb)
         IGraphBuilder_Release(gb);
     CoUninitialize();
+    if (g_ss1wo) {
+        FreeLibrary(g_ss1wo);
+        g_ss1wo = NULL;
+    }
     print_hr("DSHOW done", rc);
     return FAILED(rc) ? 1 : 0;
 }
