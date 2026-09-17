@@ -1,0 +1,3 @@
+LIBRARY ss1wmpinj
+EXPORTS
+    Ss1WmpInjStart

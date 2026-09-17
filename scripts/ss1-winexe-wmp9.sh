@@ -83,9 +83,31 @@ export WINEDEBUG="${WINEDEBUG:-+err}"
 export BOX86_LOG="${BOX86_LOG:-0}"
 export BOX86_NOBANNER=1
 export WINELOADER="$WINE"
+export SS1WO_LOG="${SS1WO_LOG:-1}"
+unset SS1WO_ALIAS_DSOUND
 . "$WIN/bin/ss1-x11-env.sh"
 [ -x "$WIN/bin/ss1-winexe-gst-env.sh" ] && . "$WIN/bin/ss1-winexe-gst-env.sh"
 export GST_DEBUG="${GST_DEBUG:-1}"
+
+PREFIX="${WINEPREFIX:-$WIN/wineprefix-prebuilt}"
+if [ "${SS1_WMP_WAVEOUT:-1}" != "0" ]; then
+  SYS32="$PREFIX/drive_c/windows/system32"
+  mkdir -p "$SYS32" "$PREFIX/drive_c/windows/temp"
+  if [ -f "$WIN/bin/ss1waveout.ax" ]; then
+    cp -f "$WIN/bin/ss1waveout.ax" "$SYS32/ss1waveout.ax"
+    cp -f "$WIN/bin/ss1waveout.ax" "$PREFIX/drive_c/ss1waveout.ax"
+    echo "staged $SYS32/ss1waveout.ax"
+  else
+    echo "WARN missing $WIN/bin/ss1waveout.ax" >&2
+  fi
+  if [ -f "$WIN/bin/ss1wmpinj.dll" ]; then
+    cp -f "$WIN/bin/ss1wmpinj.dll" "$SYS32/ss1wmpinj.dll"
+    cp -f "$WIN/bin/ss1wmpinj.dll" "$PREFIX/drive_c/ss1wmpinj.dll"
+  fi
+  if [ -f "$WIN/bin/ss1-winexe-wmpwo.exe" ]; then
+    cp -f "$WIN/bin/ss1-winexe-wmpwo.exe" "$PREFIX/drive_c/ss1-winexe-wmpwo.exe"
+  fi
+fi
 
 [ -x "$WIN/bin/ss1-winexe-ungrab-input.sh" ] && "$WIN/bin/ss1-winexe-ungrab-input.sh" || true
 [ -x "$WIN/bin/ss1-winexe-keep-input.sh" ] && "$WIN/bin/ss1-winexe-keep-input.sh" watch || true
@@ -105,3 +127,12 @@ fi
 echo $! > /tmp/ss1-wine.pid
 echo "LAUNCHED core=$CORE wine=$(cat /tmp/ss1-wine.pid) box86=gstflow exe=wmplayer.exe media=${WINMEDIA:-none}"
 echo "log=$WINELOG"
+
+if [ "${SS1_WMP_WAVEOUT:-1}" != "0" ] && [ -f "$PREFIX/drive_c/ss1-winexe-wmpwo.exe" ]; then
+  WMPWOLOG="$LOGDIR/ss1-winexe-wmpwo.log"
+  : > "$WMPWOLOG"
+  setsid /bin/sh -c "exec $WINE 'C:\\ss1-winexe-wmpwo.exe'" \
+    </dev/null >>"$WMPWOLOG" 2>&1 &
+  echo $! > /tmp/ss1-wmpwo.pid
+  echo "WMPWO helper pid=$(cat /tmp/ss1-wmpwo.pid) log=$WMPWOLOG method=A"
+fi

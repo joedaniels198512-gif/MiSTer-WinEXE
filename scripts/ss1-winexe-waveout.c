@@ -13,6 +13,7 @@
 #include <ole2.h>
 #include <dshow.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
 #include <initguid.h>
@@ -20,10 +21,41 @@
 
 static LONG g_objects;
 static LONG g_locks;
+static int g_ss1wo_log = -1;
+
+/* 0 = quiet (WMP), 1 = cadence/gaps, 2 = every Receive/Write/Done (harness default). */
+static int ss1wo_log_level(void)
+{
+    const char *e;
+    if (g_ss1wo_log >= 0)
+        return g_ss1wo_log;
+    e = getenv("SS1WO_LOG");
+    if (!e || !e[0])
+        g_ss1wo_log = 2;
+    else if (e[0] == '0')
+        g_ss1wo_log = 0;
+    else if (e[0] == '1')
+        g_ss1wo_log = 1;
+    else
+        g_ss1wo_log = 2;
+    return g_ss1wo_log;
+}
 
 static void logf(const char *fmt, ...)
 {
     va_list ap;
+    printf("SS1WO: ");
+    va_start(ap, fmt);
+    vprintf(fmt, ap);
+    va_end(ap);
+    fflush(stdout);
+}
+
+static void logf_at(int min, const char *fmt, ...)
+{
+    va_list ap;
+    if (ss1wo_log_level() < min)
+        return;
     printf("SS1WO: ");
     va_start(ap, fmt);
     vprintf(fmt, ap);
@@ -121,6 +153,7 @@ struct SS1Filter {
     LONG inflight_le1;
     LONG inflight_le2;
     LONG min_in_flight;
+    LONGLONG t_last_stat;
 };
 
 static LONGLONG g_qpc_freq;
@@ -334,12 +367,12 @@ static void CALLBACK wo_proc(HWAVEOUT hwo, UINT msg, DWORD_PTR inst,
 
     wpos = (win || !rel) ? wave_pos_ms(f) : -1;
     if (!rel)
-        logf("DONE_BEFORE_RELEASE n=%ld idx=%u infl=%ld->%ld bytes=%ld\n",
-             (long)done, i, (long)inf_before, (long)inf_after, (long)completed);
-    else
-        logf("DONE t=%lld dt=%lld idx=%u n=%ld infl=%ld->%ld bytes=%ld%s wpos=%lld\n",
-             now, dt, i, (long)done, (long)inf_before, (long)inf_after,
-             (long)completed, win ? " WIN" : "", wpos);
+        logf_at(1, "DONE_BEFORE_RELEASE n=%ld idx=%u infl=%ld->%ld bytes=%ld\n",
+                (long)done, i, (long)inf_before, (long)inf_after, (long)completed);
+    else if (win || inf_after <= 2 || ss1wo_log_level() >= 2)
+        logf_at(1, "DONE t=%lld dt=%lld idx=%u n=%ld infl=%ld->%ld bytes=%ld%s wpos=%lld\n",
+                now, dt, i, (long)done, (long)inf_before, (long)inf_after,
+                (long)completed, win ? " WIN" : "", wpos);
 }
 
 static void wo_free_buffers(SS1Filter *f)
@@ -601,9 +634,10 @@ static HRESULT write_pcm(SS1Filter *f, const BYTE *data, DWORD len)
         win = in_fail_window(f, now);
         LeaveCriticalSection(&f->cs);
         wpos = win ? wave_pos_ms(f) : -1;
-        logf("WR t=%lld dt=%lld idx=%d n=%ld infl=%ld->%ld len=%lu sub=%ld%s wpos=%lld\n",
-             now, dt, idx, (long)nwrite, (long)inf_before, (long)inf_after,
-             (unsigned long)chunk, (long)submitted, win ? " WIN" : "", wpos);
+        if (win || inf_after <= 2 || ss1wo_log_level() >= 2)
+            logf_at(1, "WR t=%lld dt=%lld idx=%d n=%ld infl=%ld->%ld len=%lu sub=%ld%s wpos=%lld\n",
+                    now, dt, idx, (long)nwrite, (long)inf_before, (long)inf_after,
+                    (unsigned long)chunk, (long)submitted, win ? " WIN" : "", wpos);
         try_release(f);
         p += chunk;
         remain -= chunk;
@@ -1575,12 +1609,24 @@ static HRESULT WINAPI mem_Receive(IMemInputPin *iface, IMediaSample *sample)
         recvd = f->bytes_received;
         dt = f->t_release ? now - f->t_release : 0;
         win = in_fail_window(f, now);
+        if (!f->t_last_stat)
+            f->t_last_stat = now;
+        if (now - f->t_last_stat >= 5000) {
+            f->t_last_stat = now;
+            LeaveCriticalSection(&f->cs);
+            logf("STAT dt=%lld infl=%ld free=%d pcm=%ld wr=%ld done=%ld starve=%ld gapmax=%lld n>80=%ld n>200=%ld wait_free=%ld\n",
+                 dt, (long)infl, freeb, (long)recvd, (long)f->write_count,
+                 (long)f->done_count, (long)f->starve, f->max_recv_gap,
+                 (long)f->gap80, (long)f->gap200, (long)f->wait_free_count);
+            EnterCriticalSection(&f->cs);
+        }
         LeaveCriticalSection(&f->cs);
         if (win)
             wpos = wave_pos_ms(f);
-        logf("RECV t=%lld dt=%lld gap=%lld len=%ld pcm=%ld infl=%ld free=%d ts0=%lld ts1=%lld%s wpos=%lld\n",
-             now, dt, gap, (long)slen, (long)recvd, (long)infl, freeb,
-             (long long)ts0, (long long)ts1, win ? " WIN" : "", wpos);
+        if (nrecv == 1 || gap > 80 || win || (infl <= 2 && dt > 0) || ss1wo_log_level() >= 2)
+            logf("RECV t=%lld dt=%lld gap=%lld len=%ld pcm=%ld infl=%ld free=%d ts0=%lld ts1=%lld%s wpos=%lld\n",
+                 now, dt, gap, (long)slen, (long)recvd, (long)infl, freeb,
+                 (long long)ts0, (long long)ts1, win ? " WIN" : "", wpos);
         if (nrecv == 1)
             logf("first Receive t=%lld len=%ld infl=%ld state=%d released=%d\n",
                  now, (long)slen, (long)infl, (int)f->state, (int)f->released);
@@ -1771,8 +1817,14 @@ SS1_EXPORT HRESULT WINAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, void *
     if (!ppv)
         return E_POINTER;
     *ppv = NULL;
-    if (!IsEqualGUID(rclsid, &CLSID_SS1WaveOut))
-        return CLASS_E_CLASSNOTAVAILABLE;
+    if (!IsEqualGUID(rclsid, &CLSID_SS1WaveOut)) {
+        const char *alias = getenv("SS1WO_ALIAS_DSOUND");
+        if (!alias || !alias[0] || alias[0] == '0' ||
+            (!IsEqualGUID(rclsid, &CLSID_DSoundRender) &&
+             !IsEqualGUID(rclsid, &CLSID_AudioRender)))
+            return CLASS_E_CLASSNOTAVAILABLE;
+        logf("DllGetClassObject alias DSound/AudioRender -> SS1 WaveOut\n");
+    }
     c = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(*c));
     if (!c)
         return E_OUTOFMEMORY;

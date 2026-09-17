@@ -11,7 +11,7 @@ printf '%-16s %6s %8s %8s %8s %8s\n' COMM PID RSS_kB PSS_kB ANON_kB FILE_kB
 for d in /proc/[0-9]*; do
   comm=$(cat "$d/comm" 2>/dev/null) || continue
   case "$comm" in
-    SIMCITY.EXE|explorer.exe|wineserver|services.exe|winedevice.exe|plugplay.exe|svchost.exe|rpcss.exe|start.exe|wine-preloader|wine|winedevice|plugplay)
+    SIMCITY.EXE|explorer.exe|wineserver|services.exe|winedevice.exe|plugplay.exe|svchost.exe|rpcss.exe|start.exe|wine-preloader|wine|winedevice|plugplay|wmplayer.exe|wmplayer.ex|ss1-winexe-wmpw|ss1-winexe-dsho)
       ;;
     *.exe|*.EXE)
       ;;

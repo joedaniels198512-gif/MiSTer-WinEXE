@@ -8,6 +8,10 @@ on:
       - "scripts/ss1-winexe-waveout.c"
       - "scripts/ss1-winexe-waveout.h"
       - "scripts/ss1waveout.def"
+      - "scripts/ss1-winexe-wmpwo.c"
+      - "scripts/ss1-winexe-wmpwo-graph.c"
+      - "scripts/ss1-winexe-wmpinj.c"
+      - "scripts/ss1wmpinj.def"
       - ".github/workflows/build-dshow-harness.yml"
 
 permissions:
@@ -15,13 +19,13 @@ permissions:
 
 jobs:
   compile-pe32:
-    name: Cross-compile ss1-winexe-dshow.exe + ss1waveout.ax (i686-mingw)
+    name: Cross-compile ss1-winexe-dshow.exe + ss1waveout.ax + WMP WaveOut inject
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build PE32 DirectShow tester and WaveOut renderer
+      - name: Build PE32 DirectShow tester, WaveOut renderer, WMP interceptor
         run: |
           set -euo pipefail
           sudo apt-get update
@@ -31,13 +35,21 @@ jobs:
             -o ss1-winexe-dshow.exe scripts/ss1-winexe-dshow.c \
             -static-libgcc -lole32 -loleaut32 -lstrmiids -luuid
           file ss1-winexe-dshow.exe
-          i686-w64-mingw32-objdump -p ss1-winexe-dshow.exe | grep -E 'Magic|subsystem|DLL Name' | head -40
           i686-w64-mingw32-gcc -O2 -Wall -s -shared \
             -o ss1waveout.ax scripts/ss1-winexe-waveout.c scripts/ss1waveout.def \
             -Wl,--kill-at -static-libgcc \
             -lole32 -loleaut32 -lwinmm -lstrmiids -luuid
           file ss1waveout.ax
-          i686-w64-mingw32-objdump -p ss1waveout.ax | grep -E 'Magic|subsystem|DLL Name|DllGetClassObject|DllCanUnloadNow' | head -50
+          i686-w64-mingw32-gcc -O2 -Wall -s -shared \
+            -o ss1wmpinj.dll scripts/ss1-winexe-wmpinj.c scripts/ss1wmpinj.def \
+            -Wl,--kill-at -static-libgcc \
+            -lole32 -loleaut32 -lstrmiids -luuid
+          file ss1wmpinj.dll
+          i686-w64-mingw32-objdump -p ss1wmpinj.dll | grep -E 'Magic|Dll Name|Ss1WmpInjStart' | head -40
+          i686-w64-mingw32-gcc -O2 -Wall -s \
+            -o ss1-winexe-wmpwo.exe scripts/ss1-winexe-wmpwo.c \
+            -static-libgcc -lole32 -loleaut32 -lstrmiids -luuid
+          file ss1-winexe-wmpwo.exe
 
       - uses: actions/upload-artifact@v4
         with:
@@ -49,4 +61,16 @@ jobs:
         with:
           name: ss1waveout.ax
           path: ss1waveout.ax
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ss1wmpinj.dll
+          path: ss1wmpinj.dll
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ss1-winexe-wmpwo.exe
+          path: ss1-winexe-wmpwo.exe
           if-no-files-found: error
