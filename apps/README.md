@@ -23,6 +23,16 @@ C:\SC2K\          # entire WIN95/SC2K/ folder, not only SIMCITY.EXE
 
 Saves belong under `C:\SC2K\Cities\`, not Program Files.
 
+Command & Conquer for Windows 95 (not DOS `CONQUER.EXE`, not in git):
+
+```
+C:\CNC\C&C95.EXE     # entire Win95 game tree; probe via launch cnc / osd 4
+```
+
+Do not run SETUP.EXE unless a later experiment says so. Copy the already
+installed Windows 95 files. OSD index 4 is not selectable until CONF_STR
+is widened (Quartus not started for that).
+
 Windows Media Player 9 (genuine XP SP3 9.00.00.4503, not in git):
 
 ```

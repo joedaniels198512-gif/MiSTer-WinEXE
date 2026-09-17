@@ -1,6 +1,8 @@
 # WinEXE core — Phase 1 architecture
 
-WMP is **parked**. Do not continue WMP memory/audio work. Do not start C&C.
+WMP is **parked**. Do not continue WMP memory/audio work. C&C is the first
+new profile (index 4) and a DirectDraw probe only — do not add PAL8/RGB565
+or FPGA video changes until that probe has evidence.
 This document is the Phase 1 deliverable: ARM/Main/profile design **before**
 any Quartus build.
 
@@ -16,7 +18,7 @@ Files: `/media/fat/Windows/profiles/<id>.ini` (repo: `profiles/`).
 
 ```
 [osd]
-index=0          # O[2:1] value; omit or menu=0 to hide
+index=0          # OSD value; live RBF is O[2:1] (0–3). Index 4 needs O[3:1].
 menu=1           # 1 = OSD list, 0 = parked/SSH only
 experimental=0
 parked=0
@@ -77,6 +79,7 @@ The launcher has **no** SC2K or Winamp `if` branches. Proven fixes are INI:
 | Paint | `paint.ini` | XP `mspaint.exe`, optional `MFC42u.dll`, 60 Hz |
 | Winamp 2.91 | `winamp2.ini` | `winamp-config.sh` (`NeedReg=0`, `mb_open=0`, `out_wave.dll`, Gecko off), 60 Hz |
 | SimCity 2000 | `sc2k.ini` | 30 Hz, skip, dirty 32×32, `dirty_pct=60`, SIMCITY CPU0 (`0x1`), presenter/Xorg CPU1 (`0x2`), `sc2k-config.sh` + toolbar watcher |
+| Command & Conquer | `cnc.ini` | Win95 `C&C95.EXE`, 60 Hz BGRX, `+ddraw` log probe, OSD 4 (RBF still 0–3) |
 | WMP9 | `experimental/wmp9.ini` | `menu=0`, parked |
 
 OSD launch does not auto-play a Winamp track. The SSH wrapper still may.
@@ -88,6 +91,7 @@ Target on the SD card:
 ```
 /media/fat/_Computer/WinEXE.rbf     # preferred menu folder
 /media/fat/_Console/WinEXE.rbf      # also valid; name matters more than folder
+/media/fat/games/WinEXE/*.wex       # Load Application... picker
 /media/fat/MiSTer.ini               # [WinEXE] / [WinEXE_Test] main=MiSTer_WinEXE
 /media/fat/MiSTer_WinEXE            # custom Main
 /media/fat/Windows/
@@ -105,26 +109,20 @@ Target on the SD card:
 Today’s `WinEXE_Test.rbf` at `/media/fat/` stays until the first OSD RBF
 is installed. Copyrighted EXEs stay out of git (`apps/README.md`).
 
-## 3. Proposed OSD menu
+## 3. OSD menu
 
-`CONF_STR` after the first FPGA change (not applied yet):
+File-based launcher (no fixed application list):
 
 ```
-// Status Bit Map:
-//             Upper                             Lower
-// 0         1         2         3          4         5         6
-// 01234567890123456789012345678901 23456789012345678901234567890123
-// 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// X XX  XXX
-
 localparam CONF_STR = {
 	"WinEXE;;",
 	"-;",
-	"O[2:1],Application,Notepad,Paint,Winamp 2,SimCity 2000;",
-	"T[4],Launch;",
+	"F0,WEX,Load Application...;",
+	"-;",
 	"T[5],Restart;",
 	"T[6],Stop;",
 	"-;",
+	"T[0],Reset;",
 	"R[0],Reset and close OSD;",
 	"V,v",`BUILD_DATE
 };
@@ -135,8 +133,7 @@ On-screen:
 ```
 WinEXE
 ----------------
-Application:  Notepad | Paint | Winamp 2 | SimCity 2000
-Launch
+Load Application... *.WEX
 Restart
 Stop
 ----------------
@@ -144,9 +141,10 @@ Reset
 Reset and close OSD
 ```
 
-WMP is not listed. `Reset` remains MiSTer’s reserved bit 0 (FPGA currently
-ignores `status[]`; VGA is already black). `Stop` is the Windows-app idle
-path.
+`.WEX` files live in `/media/fat/games/WinEXE/` (stock `HomeDir()`).
+Main intercepts the selection in `user_io_file_tx` and does **not** send
+the file to the FPGA. Adding an application is a new INI + `.WEX`; no
+Quartus, no Main rebuild.
 
 ## 4. Status-bit mapping
 

@@ -45,6 +45,7 @@ if "char is_winexe()" not in cpp:
         "static int is_winexe_type = 0;\n"
         "char is_winexe()\n"
         "{\n"
+        "\tif (!orig_name[0]) return 0;\n"
         "\tif (!is_winexe_type)\n"
         "\t{\n"
         "\t\tif (!strcasecmp(orig_name, \"WinEXE\") || !strcasecmp(orig_name, \"WinEXE_Test\"))\n"
@@ -77,6 +78,17 @@ if "winexe_status_event" not in cpp:
     cpp = cpp[:insert_at] + "\tif (is_winexe() && value) winexe_status_event(opt, value);\n}" + cpp[m.end():]
     print("patched user_io.cpp winexe_status_event")
 
+if "winexe_wex_selected" not in cpp:
+    cpp2, n = re.subn(
+        r"(int user_io_file_tx\(const char\* name, unsigned char index, char opensave, char mute, char composite, uint32_t load_addr\)\r?\n\{\r?\n)",
+        r"\1\tif (is_winexe())\n\t{\n\t\twinexe_wex_selected(name);\n\t\treturn 1;\n\t}\n",
+        cpp,
+        count=1,
+    )
+    must(n == 1, "user_io.cpp: user_io_file_tx not found")
+    cpp = cpp2
+    print("patched user_io.cpp winexe_wex_selected")
+
 cpp_path.write_text(cpp, encoding="utf-8")
 
 support_h = root / "support.h"
@@ -99,4 +111,5 @@ echo "WinEXE hook applied in $MAIN"
 # Guard: the status_set insert must not truncate user_io.cpp.
 grep -q 'user_io_get_confstr' "$MAIN/user_io.cpp"
 grep -q 'winexe_status_event' "$MAIN/user_io.cpp"
+grep -q 'winexe_wex_selected' "$MAIN/user_io.cpp"
 wc -l "$MAIN/user_io.cpp"

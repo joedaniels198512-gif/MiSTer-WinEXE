@@ -3,7 +3,8 @@
 # Does not hard-code SC2K / Winamp behaviour; that lives in profiles/*.ini.
 #
 #   ss1-winexe-launch launch <profile> [-- extra wine args]
-#   ss1-winexe-launch osd <0-3>
+#   ss1-winexe-launch launch-wex <path.wex>
+#   ss1-winexe-launch osd <0-3>          # legacy numeric OSD
 #   ss1-winexe-launch restart
 #   ss1-winexe-launch stop|idle
 #   ss1-winexe-launch status
@@ -26,6 +27,7 @@ LOCK=/tmp/ss1-winexe.lock
 WATCH_PID=/tmp/ss1-winexe-watch.pid
 PIN_PID=/tmp/ss1-winexe-pin.pid
 EXTRA_ARGS=""
+CURRENT_WEX=""
 
 CMD=${1:-status}
 [ $# -gt 0 ] && shift
@@ -33,6 +35,7 @@ CMD=${1:-status}
 usage() {
   cat <<EOF
 ss1-winexe-launch launch <profile> [-- args...]
+ss1-winexe-launch launch-wex <path.wex>
 ss1-winexe-launch osd <index>
 ss1-winexe-launch restart
 ss1-winexe-launch stop
@@ -127,6 +130,7 @@ write_status() {
 state=${1:-unknown}
 profile=${2:-}
 name=${3:-}
+wex=${CURRENT_WEX:-}
 wine_pid=$(cat /tmp/ss1-wine.pid 2>/dev/null)
 core=$(cat /tmp/CORENAME 2>/dev/null)
 updated=$(date -Iseconds 2>/dev/null || date)
@@ -259,6 +263,7 @@ idle_runtime() {
   stop_pin
   stop_wine_session
   restore_defaults
+  CURRENT_WEX=""
   [ -x "$BIN/ss1-winexe-keep-input.sh" ] && \
     "$BIN/ss1-winexe-keep-input.sh" stop >/dev/null 2>&1 || true
   if [ -f /tmp/ss1-winexe-x11-present.pid ]; then
@@ -377,6 +382,34 @@ start_watch() {
   echo $! > "$WATCH_PID"
 }
 
+wex_abs_path() {
+  p=$1
+  [ -n "$p" ] || return 1
+  case "$p" in
+    /*) ;;
+    *) p="/media/fat/$p" ;;
+  esac
+  echo "$p"
+}
+
+launch_wex() {
+  wex=$(wex_abs_path "$1") || {
+    echo "launch-wex path required" >&2
+    return 1
+  }
+  [ -f "$wex" ] || {
+    echo "missing .WEX: $wex" >&2
+    return 1
+  }
+  stem=$(ini_get "$wex" winexe profile "")
+  if [ -z "$stem" ]; then
+    echo "invalid .WEX (need [winexe] profile=): $wex" >&2
+    return 1
+  fi
+  CURRENT_WEX=$wex
+  launch_profile "$stem"
+}
+
 launch_profile() {
   stem=$1
   pf=$(resolve_profile "$stem") || {
@@ -470,7 +503,7 @@ launch_profile() {
 
   write_status running "$stem" "$name"
   start_watch "$stem"
-  echo "LAUNCHED profile=$stem name=$name wine=$(cat /tmp/ss1-wine.pid) log=$WINELOG"
+  echo "LAUNCHED profile=$stem name=$name wex=${CURRENT_WEX:-} wine=$(cat /tmp/ss1-wine.pid) log=$WINELOG"
 }
 
 show_status() {
@@ -495,6 +528,11 @@ case "$CMD" in
     launch_profile "$PROFILE"
     exit $?
     ;;
+  launch-wex)
+    [ -n "$1" ] || { echo "launch-wex path required" >&2; exit 1; }
+    launch_wex "$1"
+    exit $?
+    ;;
   osd)
     idx=$1
     [ -n "$idx" ] || { echo "osd index required" >&2; exit 1; }
@@ -505,6 +543,7 @@ case "$CMD" in
   restart)
     stem=$(current_profile)
     [ -n "$stem" ] || { echo "no current profile" >&2; exit 1; }
+    CURRENT_WEX=$(awk -F= '/^wex=/{print $2; exit}' "$STATUS" 2>/dev/null)
     launch_profile "$stem"
     exit $?
     ;;

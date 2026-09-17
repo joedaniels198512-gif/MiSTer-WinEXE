@@ -41,7 +41,7 @@ jobs:
           git -C main-src rev-parse HEAD > MAIN_MISTER.sha
           chmod +x main/apply-winexe-main.sh
           main/apply-winexe-main.sh "$GITHUB_WORKSPACE/main-src"
-          grep -n 'is_winexe\|winexe_init\|winexe_status_event' main-src/user_io.cpp main-src/user_io.h main-src/support.h
+          grep -n 'is_winexe\|winexe_init\|winexe_status_event\|winexe_wex_selected' main-src/user_io.cpp main-src/user_io.h main-src/support.h
 
       - name: Make MiSTer_WinEXE
         working-directory: main-src

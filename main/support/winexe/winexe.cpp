@@ -2,6 +2,9 @@
 // T[n] actions are handled from user_io_status_set: menu.cpp already pulses
 // 1 then 0 in the same handler, so polling cur_status later never sees them.
 // Do not clear T bits here.
+//
+// .WEX selection is intercepted in user_io_file_tx so the file is never
+// streamed into FPGA memory. Restart/Stop keep using T[5]/T[6].
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,13 +41,21 @@ void winexe_init()
 {
 	if (!is_winexe()) return;
 
-	printf("WinEXE: ARM profile core, idle until OSD Launch\n");
+	printf("WinEXE: ARM profile core, idle until Load Application\n");
 	winexe_spawn("idle", NULL);
 }
 
 void winexe_poll()
 {
-	// T pulses are observed in winexe_status_event(), not here.
+	// T pulses are observed in winexe_status_event(); .WEX in winexe_wex_selected().
+}
+
+void winexe_wex_selected(const char *path)
+{
+	if (!is_winexe() || !path || !path[0]) return;
+
+	printf("WinEXE: Load Application %s\n", path);
+	winexe_spawn("launch-wex", path);
 }
 
 void winexe_status_event(const char *opt, uint32_t value)
@@ -54,15 +65,7 @@ void winexe_status_event(const char *opt, uint32_t value)
 	int start = 0, end = 0;
 	if (!user_io_status_bits(opt, &start, &end, 0)) return;
 
-	// Only Launch / Restart / Stop. Application O[2:1] is latched, not an action.
-	if (start == 4)
-	{
-		char idx[8];
-		snprintf(idx, sizeof(idx), "%u", user_io_status_get("[2:1]") & 3);
-		printf("WinEXE: Launch OSD app %s\n", idx);
-		winexe_spawn("osd", idx);
-	}
-	else if (start == 5)
+	if (start == 5)
 	{
 		printf("WinEXE: Restart\n");
 		winexe_spawn("restart", NULL);

@@ -48,17 +48,14 @@ assign FB_FORCE_BLANK = 1'b0;
 `include "build_id.v"
 // Status bits (OSD only; not wired into video/audio RTL):
 //   [0]     T/R Reset
-//   [2:1]   Application: 0=Notepad 1=Paint 2=Winamp 2 3=SimCity 2000
-//   [3]     spare
-//   [4]     Launch
 //   [5]     Restart
 //   [6]     Stop
+// F0 .WEX picker is handled on the ARM (user_io_file_tx intercept).
 localparam CONF_STR = {
 	"WinEXE;;",
 	"-;",
-	"O[2:1],Application,Notepad,Paint,Winamp 2,SimCity 2000;",
+	"F0,WEX,Load Application...;",
 	"-;",
-	"T[4],Launch;",
 	"T[5],Restart;",
 	"T[6],Stop;",
 	"-;",

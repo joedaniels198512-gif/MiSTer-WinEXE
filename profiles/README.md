@@ -5,19 +5,33 @@ Human-readable INI files consumed by `ss1-winexe-launch`. One shared
 
 Install on the SuperStation as `/media/fat/Windows/profiles/`.
 
+OSD selection uses `.WEX` pointers in `/media/fat/games/WinEXE/`
+(`wex/*.wex` in this repo). Do **not** duplicate INI settings in the
+`.WEX`.
+
 Do **not** put copyrighted EXEs here. Profiles only describe expected
 user-supplied paths.
 
-## OSD list (menu=1)
+## Working applications
 
-| OSD index | File | Application |
+| `.WEX` | Profile | Application |
 |---|---|---|
-| 0 | `notepad.ini` | XP Notepad |
-| 1 | `paint.ini` | XP Paint |
-| 2 | `winamp2.ini` | Winamp 2.91 |
-| 3 | `sc2k.ini` | SimCity 2000 |
+| `Notepad.wex` | `notepad.ini` | XP Notepad |
+| `Paint.wex` | `paint.ini` | XP Paint |
+| `Winamp 2.wex` | `winamp2.ini` | Winamp 2.91 |
+| `SimCity 2000.wex` | `sc2k.ini` | SimCity 2000 |
 
-`experimental/wmp9.ini` is parked (`menu=0`). SSH only.
+`cnc.ini` exists for a later DirectDraw probe; there is no `.WEX` yet.
+`experimental/wmp9.ini` is parked (`menu=0`).
+
+SSH:
+
+```
+ss1-winexe-launch.sh launch-wex /media/fat/games/WinEXE/Notepad.wex
+ss1-winexe-launch.sh launch notepad
+ss1-winexe-launch.sh restart
+ss1-winexe-launch.sh stop
+```
 
 ## Schema
 

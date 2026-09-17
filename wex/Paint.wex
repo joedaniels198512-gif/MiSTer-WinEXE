@@ -1,0 +1,3 @@
+# WinEXE launcher. Points at the generic INI profile; do not duplicate settings.
+[winexe]
+profile=paint

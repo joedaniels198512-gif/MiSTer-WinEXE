@@ -67,14 +67,17 @@ if (is_winexe()) winexe_poll();
 
 Edge-detect is not used. MiSTer menu already pulses `user_io_status_set(opt, 1)` then `user_io_status_set(opt, 0)` in the same T/R handler (`menu.cpp`). Polling `cur_status` later never sees the 1.
 
-Hook: at the end of `user_io_status_set()`, if `is_winexe() && value`, call `winexe_status_event(opt, value)`. That observes the rising pulse. **Do not clear T bits** — menu already does.
+Hook: at the end of `user_io_status_set()`, if `is_winexe() && value`, call `winexe_status_event(opt, value)`. That observes Restart/Stop. **Do not clear T bits** — menu already does.
+
+At the start of `user_io_file_tx()`, if `is_winexe()`, call `winexe_wex_selected(name)` and **return** so the `.WEX` is never `user_io_set_download`'d into FPGA memory.
 
 | Call | Meaning |
 |---|---|
-| `opt` start bit 4, value 1 | Launch → `ss1-winexe-launch.sh osd <O[2:1]>` |
-| start bit 5, value 1 | Restart |
+| `user_io_file_tx` while `is_winexe()` | `.WEX` selected → `ss1-winexe-launch.sh launch-wex <path>` (**not** streamed to FPGA) |
+| start bit 5, value 1 | Restart current profile |
 | start bit 6, value 1 | Stop / idle |
-| `O[2:1]` | latched only; not an action |
+
+There is no numeric application index. `F0,WEX,Load Application...` is the picker.
 
 Do **not** scrape `/tmp/OSD_VISIBLE`, the framebuffer, or the keyboard.
 
