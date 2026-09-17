@@ -13,10 +13,10 @@ CORE=$(cat /tmp/CORENAME 2>/dev/null || true)
 "$WIN/bin/ss1-mount-prefix.sh"
 export WINEPREFIX="${WINEPREFIX:-$WIN/wineprefix-prebuilt}"
 "$WIN/bin/ss1-winexe-stop-wine.sh"
-# SC2K profile: 30 Hz presentation, skip unchanged DDR copies. HDMI/X stay 60.
+# SC2K profile: 30 Hz, skip unchanged, 32x32 dirty spans. HDMI/X stay 60.
 if [ -x "$WIN/bin/ss1-winexe-present-restart.sh" ]; then
   SS1_HZ="${SS1_HZ:-30}" SS1_SKIP_UNCHANGED="${SS1_SKIP_UNCHANGED:-1}" \
-    SS1_DIRTY="${SS1_DIRTY:-0}" \
+    SS1_DIRTY="${SS1_DIRTY:-1}" SS1_TILE_W="${SS1_TILE_W:-32}" SS1_TILE_H="${SS1_TILE_H:-32}" \
     "$WIN/bin/ss1-winexe-present-restart.sh"
 fi
 # Installer registry (SETUP.INS), not sc2kfix / SETUP.EXE.
