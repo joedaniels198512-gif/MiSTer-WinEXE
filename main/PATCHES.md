@@ -11,10 +11,11 @@ user_io.cpp / user_io_init()
       app_restart(path, xml, main);
 ```
 
-`cfg.main` defaults to `"MiSTer"` (`cfg.cpp`). Core-specific
-`/media/fat/WinEXE.ini` (see `mister/WinEXE.ini`) sets `main=MiSTer_WinEXE`.
-`getFullPath()` resolves a bare filename under the SD root
-(`/media/fat/MiSTer_WinEXE`).
+`cfg.main` defaults to `"MiSTer"` (`cfg.cpp`). Append the `[WinEXE]` /
+`[WinEXE_Test]` sections from `mister/WinEXE.ini` to `/media/fat/MiSTer.ini`
+(Main does not load a standalone `WinEXE.ini`). That sets
+`main=MiSTer_WinEXE`. `getFullPath()` resolves a bare filename under the
+SD root (`/media/fat/MiSTer_WinEXE`).
 
 After `app_restart()`, the FPGA core stays loaded; only the HPS process is
 replaced. The custom binary is a **full** Main executable with a small
@@ -110,7 +111,7 @@ Cross-compile Main_MiSTer for ARMv7 as today. Install:
 
 ```
 /media/fat/MiSTer_WinEXE
-/media/fat/WinEXE.ini
+# plus [WinEXE] / [WinEXE_Test] sections in /media/fat/MiSTer.ini
 ```
 
 The first **FPGA** rebuild is a separate, warned GHA Quartus job. Main

@@ -29,6 +29,14 @@ cp -f "$REPO"/profiles/README.md "$WIN/profiles/" 2>/dev/null || true
 
 if [ -f "$REPO/mister/WinEXE.ini" ]; then
   cp -f "$REPO/mister/WinEXE.ini" "$ROOT/WinEXE.ini"
+  # Main only reads MiSTer.ini sections, not the standalone fragment.
+  if [ -f "$ROOT/MiSTer.ini" ] && ! grep -q '^\[WinEXE\]' "$ROOT/MiSTer.ini"; then
+    printf '\n' >> "$ROOT/MiSTer.ini"
+    cat "$REPO/mister/WinEXE.ini" >> "$ROOT/MiSTer.ini"
+    echo "appended [WinEXE] sections to $ROOT/MiSTer.ini"
+  elif [ -f "$ROOT/MiSTer.ini" ]; then
+    echo "[WinEXE] already present in $ROOT/MiSTer.ini"
+  fi
 fi
 
 echo "installed ARM layout under $WIN"

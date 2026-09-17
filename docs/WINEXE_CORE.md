@@ -88,8 +88,8 @@ Target on the SD card:
 ```
 /media/fat/_Computer/WinEXE.rbf     # preferred menu folder
 /media/fat/_Console/WinEXE.rbf      # also valid; name matters more than folder
-/media/fat/WinEXE.ini               # main=MiSTer_WinEXE
-/media/fat/MiSTer_WinEXE            # custom Main (not built this phase)
+/media/fat/MiSTer.ini               # [WinEXE] / [WinEXE_Test] main=MiSTer_WinEXE
+/media/fat/MiSTer_WinEXE            # custom Main
 /media/fat/Windows/
   bin/          launchers, presenter, wine wrappers
   profiles/     INI files from this repo
@@ -246,7 +246,7 @@ Idle (no Xorg): watcher stopped; stock grab is correct for OSD-only.
 | Layout installer | `scripts/ss1-winexe-install-layout.sh` |
 | Wrappers → launcher | notepad / paint / winamp / sc2k / run-exe |
 | Main hook (source only) | `main/support/winexe/*`, `main/PATCHES.md` |
-| Core INI fragment | `mister/WinEXE.ini` |
+| Core INI fragment (merge into MiSTer.ini) | `mister/WinEXE.ini` |
 | Helpers dir | `helpers/README.md` |
 
 Not built this phase: Quartus RBF, `MiSTer_WinEXE` binary, CONF_STR edit.
@@ -269,8 +269,8 @@ build after this architecture is agreed. Do not produce per-app RBFs.
 
 Edit **only** `fpga/WinEXE.sv` `CONF_STR` (and the status-bit comment):
 
-1. Rename `"WinEXE_Test;;"` → `"WinEXE;;"` so `/tmp/CORENAME`, INI section,
-   and `WinEXE.ini` match.
+1. Rename `"WinEXE_Test;;"` → `"WinEXE;;"` so `/tmp/CORENAME` and the
+   `[WinEXE]` section in `MiSTer.ini` match.
 2. Insert the Status Bit Map comment in §3.
 3. Add `O[2:1]`, `T[4]`, `T[5]`, `T[6]` as in §3.
 4. Keep `T[0]` / `R[0]` Reset.

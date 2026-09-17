@@ -24,6 +24,7 @@ HELPERS="$WIN/helpers"
 STATUS=/tmp/ss1-winexe.status
 LOCK=/tmp/ss1-winexe.lock
 WATCH_PID=/tmp/ss1-winexe-watch.pid
+PIN_PID=/tmp/ss1-winexe-pin.pid
 EXTRA_ARGS=""
 
 CMD=${1:-status}
@@ -255,6 +256,7 @@ stop_wine_session() {
 
 idle_runtime() {
   stop_watch
+  stop_pin
   stop_wine_session
   restore_defaults
   [ -x "$BIN/ss1-winexe-keep-input.sh" ] && \
@@ -330,10 +332,20 @@ apply_cpu_services() {
   done
 }
 
+stop_pin() {
+  if [ -f "$PIN_PID" ]; then
+    kill "$(cat "$PIN_PID")" 2>/dev/null || true
+    rm -f "$PIN_PID"
+  fi
+}
+
 pin_app_comm() {
   comm=$1
   mask=$2
+  stop_pin
   [ -n "$comm" ] && [ -n "$mask" ] || return 0
+  # Wine can spawn the exe more than once (explorer desktop). Keep
+  # re-applying for the wait window instead of exiting on the first pid.
   (
     i=0
     while [ "$i" -lt 90 ]; do
@@ -341,13 +353,13 @@ pin_app_comm() {
         c=$(cat "$d/comm" 2>/dev/null) || continue
         if [ "$c" = "$comm" ]; then
           taskset -p "$mask" "${d#/proc/}" >/dev/null 2>&1 || true
-          exit 0
         fi
       done
       sleep 1
       i=$((i + 1))
     done
   ) >/dev/null 2>&1 &
+  echo $! > "$PIN_PID"
 }
 
 start_watch() {
