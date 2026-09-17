@@ -31,9 +31,11 @@ mem | tee -a "$LOG"
 [ -x "$WIN/bin/ss1-winexe-mem-wine.sh" ] && "$WIN/bin/ss1-winexe-mem-wine.sh" | tee -a "$LOG"
 
 i=0
-while [ "$i" -lt 24 ]; do
+while [ "$i" -lt 48 ]; do
   a=$(avail_kb)
-  echo "===== t+${i}s MemAvailable=${a}kB =====" | tee -a "$LOG"
+  if [ $((i % 4)) -eq 0 ]; then
+    echo "===== t+${i}s MemAvailable=${a}kB =====" | tee -a "$LOG"
+  fi
   if [ -n "$a" ] && [ "$a" -lt "$ABORT_KB" ]; then
     echo "ABORT MemAvailable=${a}kB < ${ABORT_KB}kB — stopping Wine" | tee -a "$LOG"
     "$WIN/bin/ss1-winexe-stop-wine.sh" | tee -a "$LOG"
@@ -41,19 +43,21 @@ while [ "$i" -lt 24 ]; do
     mem | tee -a "$LOG"
     exit 2
   fi
-  if [ "$i" -eq 8 ] || [ "$i" -eq 16 ] || [ "$i" -eq 20 ]; then
-    [ -x "$WIN/bin/ss1-winexe-mem-wine.sh" ] && "$WIN/bin/ss1-winexe-mem-wine.sh" | tee -a "$LOG"
+  if [ "$i" -eq 8 ] || [ "$i" -eq 16 ] || [ "$i" -eq 24 ]; then
+    if [ -n "$a" ] && [ "$a" -gt 100000 ]; then
+      [ -x "$WIN/bin/ss1-winexe-mem-wine.sh" ] && "$WIN/bin/ss1-winexe-mem-wine.sh" | tee -a "$LOG"
+    fi
     echo "===== alsa t+${i}s =====" | tee -a "$LOG"
     cat /proc/asound/card0/pcm0p/sub0/status 2>/dev/null | head -8 | tee -a "$LOG"
     echo "===== WMPWO =====" | tee -a "$LOG"
     grep -E "WMPWO: (FILTER |SCAN |SWAP |graph has no|inject|wmplayer|ss1_ok|ROT |FAIL )" \
       "$WIN/logs/ss1-winexe-wmpwo.log" "$WIN/logs/wine-winexe-wmp9.log" 2>/dev/null | tail -80 | tee -a "$LOG"
     echo "===== SS1WO =====" | tee -a "$LOG"
-    grep -E "SS1WO: (created|waveOutOpen|paused|first |playback released|STARVE|WRITE_ABORT|PCM tally|GAP |STAT |EndOfStream|EOS drained|EC_COMPLETE)" \
+    grep -E "SS1WO: (created|waveOutOpen|paused|first |playback released|STARVE|WRITE_ABORT|PCM tally|GAP |STAT |EndOfStream|EOS drained|EC_COMPLETE|alias )" \
       "$WIN/logs/wine-winexe-wmp9.log" 2>/dev/null | tail -40 | tee -a "$LOG"
   fi
-  i=$((i + 4))
-  sleep 4
+  i=$((i + 1))
+  sleep 1
 done
 
 echo "===== mem during/after first ~24s =====" | tee -a "$LOG"

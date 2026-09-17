@@ -138,8 +138,13 @@ for d in /proc/[0-9]*; do
 done
 if [ "$stale" = 1 ]; then
   echo "STALE_WINE=1" >&2
+  [ -x "$WIN/bin/ss1-winexe-wmp9-waveout-clsid.sh" ] && \
+    "$WIN/bin/ss1-winexe-wmp9-waveout-clsid.sh" restore >/dev/null 2>&1 || true
   report_keep
   exit 1
 fi
 echo "STALE_WINE=0"
+if [ -x "$WIN/bin/ss1-winexe-wmp9-waveout-clsid.sh" ]; then
+  "$WIN/bin/ss1-winexe-wmp9-waveout-clsid.sh" restore >/dev/null 2>&1 || true
+fi
 report_keep

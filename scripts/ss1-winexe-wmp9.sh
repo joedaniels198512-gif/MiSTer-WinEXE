@@ -84,7 +84,16 @@ export BOX86_LOG="${BOX86_LOG:-0}"
 export BOX86_NOBANNER=1
 export WINELOADER="$WINE"
 export SS1WO_LOG="${SS1WO_LOG:-1}"
-unset SS1WO_ALIAS_DSOUND
+# Plan B (default): WMP-session CLSID override so quartz CoCreate of
+# DSound/AudioRender instantiates ss1waveout.ax. No extra Wine PE.
+# Plan A helper (inject/ROT) is optional — it cost ~40 MB and helped OOM WMP.
+if [ "${SS1_WMP_WAVEOUT_CLSID:-1}" != "0" ]; then
+  export SS1WO_ALIAS_DSOUND=1
+  [ -x "$WIN/bin/ss1-winexe-wmp9-waveout-clsid.sh" ] && \
+    "$WIN/bin/ss1-winexe-wmp9-waveout-clsid.sh" apply || true
+else
+  unset SS1WO_ALIAS_DSOUND
+fi
 . "$WIN/bin/ss1-x11-env.sh"
 [ -x "$WIN/bin/ss1-winexe-gst-env.sh" ] && . "$WIN/bin/ss1-winexe-gst-env.sh"
 export GST_DEBUG="${GST_DEBUG:-1}"
@@ -128,11 +137,13 @@ echo $! > /tmp/ss1-wine.pid
 echo "LAUNCHED core=$CORE wine=$(cat /tmp/ss1-wine.pid) box86=gstflow exe=wmplayer.exe media=${WINMEDIA:-none}"
 echo "log=$WINELOG"
 
-if [ "${SS1_WMP_WAVEOUT:-1}" != "0" ] && [ -f "$PREFIX/drive_c/ss1-winexe-wmpwo.exe" ]; then
+if [ "${SS1_WMP_WAVEOUT_HELPER:-0}" != "0" ] && [ -f "$PREFIX/drive_c/ss1-winexe-wmpwo.exe" ]; then
   WMPWOLOG="$LOGDIR/ss1-winexe-wmpwo.log"
   : > "$WMPWOLOG"
   setsid /bin/sh -c "exec $WINE 'C:\\ss1-winexe-wmpwo.exe'" \
     </dev/null >>"$WMPWOLOG" 2>&1 &
   echo $! > /tmp/ss1-wmpwo.pid
   echo "WMPWO helper pid=$(cat /tmp/ss1-wmpwo.pid) log=$WMPWOLOG method=A"
+else
+  echo "WMPWO method=B CLSID override (no extra helper PE) alias=${SS1WO_ALIAS_DSOUND:-off}"
 fi
