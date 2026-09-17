@@ -23,7 +23,9 @@ user-supplied paths.
 | `Command & Conquer.wex` | `cnc.ini` | Command & Conquer Gold (stock C&C95.EXE) |
 
 Game data and `CnC_NOD95.iso` stay on the SuperStation, not in git.
-`experimental/wmp9.ini` is parked (`menu=0`).
+DirectDraw GetCaps findings (SYSTEMMEMORY vs video buffer):
+[docs/CNC_DDRAW.md](../docs/CNC_DDRAW.md). `experimental/wmp9.ini` is
+parked (`menu=0`).
 
 SSH:
 

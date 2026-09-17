@@ -31,7 +31,8 @@ Command & Conquer Gold (Nod Windows 95, not DOS `CONQUER.EXE`, not in git):
 ```
 
 Do not run the disc `SETUP.EXE` (16-bit InstallShield stub). OSD loads
-`Command & Conquer.wex`.
+`Command & Conquer.wex`. DirectDraw diagnostic:
+[docs/CNC_DDRAW.md](../docs/CNC_DDRAW.md).
 
 Windows Media Player 9 (genuine XP SP3 9.00.00.4503, not in git):
 
