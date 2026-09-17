@@ -307,6 +307,13 @@ static void describe_message(GstMessage *msg)
         p_g_free(srcname);
 }
 
+static int is_named_type(GstMessage *msg, const char *want)
+{
+    int type = message_type(msg);
+    const char *tname = p_gst_message_type_get_name ? p_gst_message_type_get_name(type) : NULL;
+    return tname && want && strcmp(tname, want) == 0;
+}
+
 static int run_pipeline(const char *wav)
 {
     GstElement *pipeline, *src, *parse, *sink;
@@ -394,9 +401,11 @@ static int run_pipeline(const char *wav)
         }
         nmsg++;
         describe_message(msg);
-        if (message_type(msg) == GST_MESSAGE_EOS)
+        /* Native type names: the i386 GstMessage.type offset is not 1:1 with
+         * GST_MESSAGE_* flags under Box86, so match the wrapped get_name. */
+        if (is_named_type(msg, "eos"))
             saw_eos = 1;
-        if (message_type(msg) == GST_MESSAGE_ERROR)
+        if (is_named_type(msg, "error"))
             saw_error = 1;
         if (p_gst_message_unref)
             p_gst_message_unref(msg);
