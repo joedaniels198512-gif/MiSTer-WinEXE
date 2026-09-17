@@ -382,8 +382,6 @@ WRAPPER(GstPadInstance, eventfullfunc, int    , (void* pad, void* parent, void* 
     GO(chainnotify, vFp);               \
     GO(chainlistfunc, iFppp);           \
     GO(chainlistnotify, vFp);           \
-    GO(getrangefunc, iFppUup);          \
-    GO(getrangenotify, vFp);            \
     GO(eventfunc, iFppp);               \
     GO(eventnotify, vFp);               \
     GO(queryfunc, iFppp);               \
@@ -437,6 +435,8 @@ static void unwrapGstPadInstance(my_GstPad_t* class)
     #define GO(A, W)   class->A = find_##A##_GstPadInstance (class->A)
     SUPERGO()
     #undef GO
+    class->getrangefunc = find_getrangefunc_GstPadInstance (class->getrangefunc);
+    class->getrangenotify = find_getrangenotify_GstPadInstance (class->getrangenotify);
     class->ABI.abi.eventfullfunc = find_eventfullfunc_GstPadInstance (class->ABI.abi.eventfullfunc);
     class->probes.finalize_hook = find_finalize_hook_GstPadInstance (class->probes.finalize_hook);
 }
@@ -446,6 +446,7 @@ static void bridgeGstPadInstance(my_GstPad_t* class)
     #define GO(A, W) autobridge_##A##_GstPadInstance (W, class->A)
     SUPERGO()
     #undef GO
+    autobridge_getrangenotify_GstPadInstance (vFp, class->getrangenotify);
     autobridge_eventfullfunc_GstPadInstance (iFppp, class->ABI.abi.eventfullfunc);
     autobridge_finalize_hook_GstPadInstance (vFpp, class->probes.finalize_hook);
 }
