@@ -35,16 +35,23 @@ only and does **not** overwrite Wine `quartz.dll`. See
 
 ## Launch
 
+OSD (after the first WinEXE CONF_STR rebuild): Application + Launch.
+
+SSH today:
+
 ```sh
-/media/fat/Windows/bin/ss1-winexe-notepad.sh
-/media/fat/Windows/bin/ss1-winexe-run-exe.sh mspaint.exe
-/media/fat/Windows/bin/ss1-winexe-winamp.sh
-/media/fat/Windows/bin/ss1-winexe-sc2k.sh
-/media/fat/Windows/bin/ss1-winexe-wmp9.sh
+/media/fat/Windows/bin/ss1-winexe-launch.sh launch notepad
+/media/fat/Windows/bin/ss1-winexe-launch.sh launch paint
+/media/fat/Windows/bin/ss1-winexe-launch.sh launch winamp2
+/media/fat/Windows/bin/ss1-winexe-launch.sh launch sc2k
+/media/fat/Windows/bin/ss1-winexe-launch.sh stop
 ```
 
+Legacy wrappers still work (`ss1-winexe-notepad.sh`, `ss1-winexe-run-exe.sh`,
+…). WMP9 is parked: `ss1-winexe-wmp9.sh` / `profiles/experimental/wmp9.ini`.
+
 `ss1-run-exe.sh` is the older parked `/dev/fb0` helper. Use the
-`ss1-winexe-*` launchers on `WinEXE_Test`.
+`ss1-winexe-*` launchers on `WinEXE_Test` / `WinEXE`.
 
 Do not put 64-bit (PE32+) binaries here. Box86 + Wine 7.1 i386 will
 refuse them.

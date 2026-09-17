@@ -1,14 +1,19 @@
 # WMP9 / DirectShow / GStreamer / WaveOut status
 
+**PARKED (2026-09-17).** Do not continue WMP memory/audio integration.
+Do not start C&C. Keep this tree, `box86-gstflow`, GStreamer,
+`ss1waveout.ax`, and the harness. WMP is **not** in the WinEXE OSD app
+list. Architecture for the OSD core: [WINEXE_CORE.md](WINEXE_CORE.md).
+
 Checkpoint date: 2026-09-17.
 
-Windows Media Player 9 is now fundamentally working through the WinEXE
-stack. This document is the restart point for the next session.
+Windows Media Player 9 is fundamentally working through the WinEXE
+stack. This document is the restart point when WMP is un-parked.
 
 Do **not** start Command & Conquer from this work. Do **not** replace the
 original global Box86. Do **not** implement `IReferenceClock` unless a
 later run shows remaining crackle is clock/pacing rather than producer
-stalls.
+stalls. Next WMP blocker is `wmplayer.exe` RAM growth, not WaveOut.
 
 ## Proven
 
@@ -30,8 +35,7 @@ stalls.
 * WMP memory-usage investigation.
 * Integrating `ss1waveout.ax` into the actual WMP9 graph (current best
   audio was the harness, not WMP).
-* Turning WinEXE into a proper MiSTer core with OSD-selectable app
-  profiles.
+* WMP is parked; WinEXE OSD profiles are in [WINEXE_CORE.md](WINEXE_CORE.md).
 
 ## Box86 binaries (do not replace original)
 

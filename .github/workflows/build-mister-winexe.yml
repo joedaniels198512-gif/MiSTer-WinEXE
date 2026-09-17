@@ -1,0 +1,64 @@
+name: Build MiSTer_WinEXE
+
+# ARM-only. Does not compile FPGA / Quartus.
+# Clones upstream Main_MiSTer, applies the documented WinEXE hook, cross-compiles
+# with the official ARM GNU 10.2 toolchain.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "main/**"
+      - ".github/workflows/build-mister-winexe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  compile-mister-winexe:
+    name: Cross-compile MiSTer_WinEXE
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ARM GNU toolchain 10.2
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            git make wget xz-utils python3 ca-certificates
+          url='https://developer.arm.com/-/media/Files/downloads/gnu-a/10.2-2020.11/binrel/gcc-arm-10.2-2020.11-x86_64-arm-none-linux-gnueabihf.tar.xz?revision=d0b90559-3960-4e4b-9297-7ddbc3e52783'
+          wget -q -O /tmp/gcc-arm.tar.xz "$url"
+          sudo tar -C /opt -xJf /tmp/gcc-arm.tar.xz
+          echo "/opt/gcc-arm-10.2-2020.11-x86_64-arm-none-linux-gnueabihf/bin" >> "$GITHUB_PATH"
+
+      - name: Clone Main_MiSTer and apply WinEXE hook
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/MiSTer-devel/Main_MiSTer.git main-src
+          echo "MAIN_SHA=$(git -C main-src rev-parse HEAD)" | tee -a "$GITHUB_ENV"
+          git -C main-src rev-parse HEAD > MAIN_MISTER.sha
+          chmod +x main/apply-winexe-main.sh
+          main/apply-winexe-main.sh "$GITHUB_WORKSPACE/main-src"
+          grep -n 'is_winexe\|winexe_init\|winexe_status_event' main-src/user_io.cpp main-src/user_io.h main-src/support.h
+
+      - name: Make MiSTer_WinEXE
+        working-directory: main-src
+        run: |
+          set -euo pipefail
+          arm-none-linux-gnueabihf-gcc --version | head -1
+          make -j"$(nproc)"
+          test -x bin/MiSTer
+          cp -f bin/MiSTer ../MiSTer_WinEXE
+          arm-none-linux-gnueabihf-strip ../MiSTer_WinEXE || true
+          file ../MiSTer_WinEXE
+          ls -l ../MiSTer_WinEXE
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MiSTer_WinEXE
+          path: |
+            MiSTer_WinEXE
+            MAIN_MISTER.sha
+          if-no-files-found: error

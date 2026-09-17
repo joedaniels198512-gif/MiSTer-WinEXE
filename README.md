@@ -10,6 +10,10 @@ GitHub: [joedaniels198512-gif/superstation-windows](https://github.com/joedaniel
 
 ## Current status (2026-09-17)
 
+**WMP is parked.** Do not continue WMP memory/audio work. Do not start C&C.
+Next milestone: one shared `WinEXE.rbf` with OSD application profiles.
+Architecture (no Quartus yet): [docs/WINEXE_CORE.md](docs/WINEXE_CORE.md).
+
 Live path (do not use `/dev/fb0` / F9 / `ss1-fb-present` for these apps):
 
 ```
@@ -35,12 +39,18 @@ loader. Full write-up: [docs/WMP9_DSHOW.md](docs/WMP9_DSHOW.md).
 * 30 Hz + dirty-region SC2K optimization (skip unchanged frames, 32×32 dirty spans)
 * SC2K CPU affinity (SIMCITY on CPU0, presenter+Xorg on CPU1)
 * SC2K floating toolbar stays above the city map (`ss1-winexe-sc2k-toolbar.sh`)
-* genuine XP SP3 WMP9 9.00.00.4503 UI launches
-* Wine DirectShow PCM WAV graph (`RenderFile` → GStreamer splitter → renderer, `EC_COMPLETE`)
-* physical PCM audio on SuperStation
-* custom SS1 WaveOut renderer (`ss1waveout.ax`) substantially better than DirectSound
+* (parked) genuine XP SP3 WMP9 9.00.00.4503 UI launches
+* (parked) Wine DirectShow PCM WAV graph and physical WaveOut audio
 
-### WMP9 / DirectShow / GStreamer / WaveOut status
+### WMP9 — PARKED (kept, not in the OSD app list)
+
+Do **not** continue this work now. Sources stay in the repo: Box86
+GStreamer patches, `box86-gstflow`, GStreamer runtime, DirectShow
+harness, `ss1waveout.ax`, `docs/WMP9_DSHOW.md`. SSH-only via
+`ss1-winexe-wmp9.sh` / `profiles/experimental/wmp9.ini`. OSD list is
+Notepad, Paint, Winamp 2, SimCity 2000.
+
+### WMP9 / DirectShow / GStreamer / WaveOut status (parked notes)
 
 * **WMP UI works.** Genuine `wmplayer.exe` 9.00.00.4503 launches on the
   existing WinEXE stack via `ss1-winexe-wmp9.sh` / `wine-gstflow`.
@@ -66,9 +76,9 @@ loader. Full write-up: [docs/WMP9_DSHOW.md](docs/WMP9_DSHOW.md).
 * **Not yet tested** through the final WaveOut path: MP3, WMP
   visualisations, WMP memory usage, wiring `ss1waveout.ax` into actual
   WMP9 (best audio so far is the harness).
-* Do **not** implement `IReferenceClock` yet. Do **not** replace original
-  Box86. Next session: integrate WaveOut into WMP9, then PCM/MP3/vis/RAM,
-  then checkpoint, then OSD app profiles. Do not start C&C.
+* Do **not** implement `IReferenceClock`. Do **not** replace original
+  Box86. WMP next blocker is `wmplayer.exe` RAM, not the renderer.
+  Resume only after the WinEXE OSD core. Do not start C&C.
 
 ### Frozen / do not casually change
 
@@ -80,9 +90,11 @@ failure requires more. Multimedia tests use sidecar `box86-gst` /
 
 ### Parked
 
-Xorg `/dev/fb0` ShadowFB/software-cursor corruption and the n=1 HPS
-presenter. That path still exists for history; WinEXE HDMI does not use it.
-See [docs/X11_RUNTIME.md](docs/X11_RUNTIME.md).
+* Windows Media Player 9 / DirectShow / WaveOut — kept on disk, **not** in
+  the OSD app list. See [docs/WMP9_DSHOW.md](docs/WMP9_DSHOW.md).
+* Xorg `/dev/fb0` ShadowFB/software-cursor corruption and the n=1 HPS
+  presenter. That path still exists for history; WinEXE HDMI does not use it.
+  See [docs/X11_RUNTIME.md](docs/X11_RUNTIME.md).
 
 ### Not in git (copyrighted / generated)
 
@@ -104,19 +116,21 @@ Rebuild those from Actions artifacts + your own media. See below.
 | `/media/fat/Windows/x11/` | Relocatable X.Org + dummy + evdev + winex11 libs |
 | `/media/fat/Windows/bin/` | Launchers + ARM presenter from this repo / Actions |
 | `/media/fat/Windows/apps/` | Drop genuine PE32 EXEs (Notepad, Paint, …) |
-| `/media/fat/WinEXE_Test.rbf` | FPGA core from Actions |
+| `/media/fat/Windows/profiles/` | OSD application INI files (no EXEs) |
+| `/media/fat/WinEXE_Test.rbf` | current FPGA core (rename to `WinEXE.rbf` after first OSD build) |
 
 ## Launchers
 
 | Script | What it starts |
 |---|---|
-| `scripts/ss1-winexe-notepad.sh` | Load core if needed, dummy Xorg, presenter, XP Notepad |
-| `scripts/ss1-winexe-run-exe.sh` | Next EXE on the existing stack (default: Paint) |
-| `scripts/ss1-winexe-winamp.sh` | Stamp first-run/Gecko-off settings, launch Winamp 2.91 |
-| `scripts/ss1-winexe-sc2k.sh` | 30 Hz + dirty + affinity + registry stamp + toolbar watcher |
+| `scripts/ss1-winexe-launch.sh` | Generic profile launcher (launch/osd/restart/stop/status) |
+| `scripts/ss1-winexe-notepad.sh` | Wrapper → `launch notepad` |
+| `scripts/ss1-winexe-run-exe.sh` | Paint profile, or ad-hoc EXE on the 60 Hz stack |
+| `scripts/ss1-winexe-winamp.sh` | Wrapper → `launch winamp2` (optional MP3 still allowed) |
+| `scripts/ss1-winexe-sc2k.sh` | Wrapper → `launch sc2k` (fixes live in `profiles/sc2k.ini`) |
 | `scripts/ss1-winexe-stop-wine.sh` | End the current Wine session only (keep Xorg/presenter/input) |
-| `scripts/ss1-winexe-wmp9.sh` | Launch genuine WMP9 via `wine-gstflow` (does not replace original Box86) |
-| `scripts/ss1-winexe-dshow.sh` | PCM DirectShow harness → `ss1waveout.ax` (no WMP, no presenter) |
+| `scripts/ss1-winexe-wmp9.sh` | PARKED — genuine WMP9 via `wine-gstflow` |
+| `scripts/ss1-winexe-dshow.sh` | PARKED — PCM DirectShow harness → `ss1waveout.ax` |
 
 Presenter profiles (`scripts/ss1-winexe-present-restart.sh`):
 
@@ -138,16 +152,20 @@ HDMI and dummy X stay 60 Hz. Only ARM DDR writes are paced.
    - **Prepare ARMHF host-libs** → fontconfig bundle
 3. Copy the working Box86 + Wine 7.1 trees onto `/media/fat/Windows` (already
    proven on this SuperStation; do not replace casually).
-4. Install scripts from `scripts/` to `/media/fat/Windows/bin/`. Copy
-   `dummy_drv.so` to `/media/fat/Windows/x11/lib/xorg/modules/drivers/`.
+4. Install scripts from `scripts/` to `/media/fat/Windows/bin/` and
+   profiles to `/media/fat/Windows/profiles/`
+   (`ss1-winexe-install-layout.sh`). Copy `dummy_drv.so` to
+   `/media/fat/Windows/x11/lib/xorg/modules/drivers/`.
 5. Drop genuine media on the device only:
    - `apps/notepad.exe`, `apps/mspaint.exe` (+ `MFC42u.dll` if Paint asks)
    - Winamp 2.91 into `C:\Program Files\Winamp`
    - Win95 `WIN95/SC2K/` tree to `C:\SC2K\`
    - WMP9 files into `/media/fat/Windows/apps/wmp9/` then `ss1-winexe-wmp9-install.sh`
-6. Load `WinEXE_Test.rbf`, start dummy Xorg + presenter, then a launcher.
+6. Load `WinEXE_Test.rbf` (today) or `WinEXE.rbf` (after the OSD FPGA
+   build), then `ss1-winexe-launch.sh launch notepad`.
 
-Details: [docs/WINEXE_FPGA.md](docs/WINEXE_FPGA.md),
+Details: [docs/WINEXE_CORE.md](docs/WINEXE_CORE.md),
+[docs/WINEXE_FPGA.md](docs/WINEXE_FPGA.md),
 [docs/WMP9_DSHOW.md](docs/WMP9_DSHOW.md),
 [docs/X11_RUNTIME.md](docs/X11_RUNTIME.md),
 [docs/WINE_PREFIX.md](docs/WINE_PREFIX.md),

@@ -187,11 +187,15 @@ def restack_palette_above_map(desk, city, palette):
     return True
 
 desk = None
-for _ in range(50):
+for _ in range(90):
+    if simcity_alive():
+        break
+    time.sleep(1)
+for _ in range(90):
     desk = desktop()
     if desk:
         break
-    time.sleep(0.2)
+    time.sleep(0.5)
 if not desk:
     raise SystemExit("wine desktop not found")
 

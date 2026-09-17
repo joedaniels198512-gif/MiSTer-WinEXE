@@ -4,6 +4,13 @@ Status: sources in `fpga/`. Quartus 17.0 compile is GitHub Actions
 (`.github/workflows/build-winexe-core.yml`), not local. Colour-bar HDMI
 and the Wine GUI path are **proven**. FPGA timing/video is frozen.
 
+OSD application profiles and custom Main are ARM-side first:
+[WINEXE_CORE.md](WINEXE_CORE.md). **Do not start Quartus until that
+architecture is agreed.** The first OSD-enabled build only changes
+`CONF_STR` (core name `WinEXE`, Application / Launch / Restart / Stop).
+WMP is parked and is not an OSD item.
+
+
 This core’s only job is a linear RGB framebuffer that the ARM side writes
 and the FPGA/MiSTer scaler displays. Do not add DVD MPEG/YUV, DirectDraw
 acceleration, or CRT options to the RBF.
