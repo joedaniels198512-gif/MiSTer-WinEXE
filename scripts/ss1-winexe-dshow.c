@@ -11,6 +11,11 @@
 #include <stdio.h>
 
 static const WCHAR kWav[] = L"C:\\tone.wav";
+
+static int utf8_to_wide(const char *s, WCHAR *out, int nout)
+{
+    return MultiByteToWideChar(CP_ACP, 0, s, -1, out, nout);
+}
 static const WCHAR kWaveParser[] = L"{D51BD5A1-7548-11CF-A520-0080C77EF58A}";
 
 static void print_hr(const char *label, HRESULT hr)
@@ -105,7 +110,7 @@ static const char *state_name(OAFilterState st)
     }
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     IGraphBuilder *gb = NULL;
     IMediaControl *mc = NULL;
@@ -115,9 +120,17 @@ int main(void)
     LONGLONG dur = 0, pos = 0;
     OAFilterState st = State_Stopped;
     LONG ev = 0;
-    int i;
+    int i, max_i;
+    WCHAR wavpath[MAX_PATH];
+    const WCHAR *wav = kWav;
 
-    printf("DSHOW start wav=C:\\tone.wav\n");
+    if (argc > 1 && argv[1] && argv[1][0]) {
+        if (utf8_to_wide(argv[1], wavpath, MAX_PATH) > 0)
+            wav = wavpath;
+    }
+
+    printf("DSHOW argc=%d\n", argc);
+    print_w("DSHOW wav", wav);
     fflush(stdout);
 
     hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
@@ -139,7 +152,7 @@ int main(void)
 
     printf("BEFORE RenderFile\n");
     fflush(stdout);
-    hr = IGraphBuilder_RenderFile(gb, kWav, NULL);
+    hr = IGraphBuilder_RenderFile(gb, wav, NULL);
     print_hr("RenderFile", hr);
     rc = hr;
     enum_filters(gb);
@@ -182,7 +195,17 @@ int main(void)
     printf("STATE after Run %s\n", state_name(st));
     fflush(stdout);
 
-    for (i = 0; i < 8; i++) {
+    max_i = 80;
+    if (dur > 0) {
+        max_i = (int)((dur / 10000) / 500) + 12;
+        if (max_i < 8)
+            max_i = 8;
+        if (max_i > 120)
+            max_i = 120;
+    }
+    printf("POLL max_i=%d (~%ds)\n", max_i, max_i / 2);
+    fflush(stdout);
+    for (i = 0; i < max_i; i++) {
         pos = -1;
         if (ms)
             IMediaSeeking_GetCurrentPosition(ms, &pos);

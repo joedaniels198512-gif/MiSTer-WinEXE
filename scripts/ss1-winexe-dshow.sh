@@ -37,21 +37,37 @@ ls -l "$BOX86" "$WIN/box86-ss1/box86" "$EXE" 2>/dev/null
 export WINEPREFIX="$PREFIX"
 export WINEARCH=win32
 
-# Dummy Xorg for Wine window station only. Do not start FPGA presenter (core may be MENU).
+# Dummy Xorg for Wine window station only. No presenter (audio-only).
 if [ -x "$WIN/bin/ss1-winexe-xorg.sh" ]; then
   "$WIN/bin/ss1-winexe-xorg.sh" start || true
 fi
 
 "$WIN/bin/ss1-winexe-stop-wine.sh"
 
-if [ -f /tmp/tone.wav ] && [ ! -f "$PREFIX/drive_c/tone.wav" ]; then
-  cp -a /tmp/tone.wav "$PREFIX/drive_c/tone.wav"
+# Stop presenter if leftover from WMP — keep the machine idle for this listen test.
+if [ -f /tmp/ss1-winexe-x11-present.pid ]; then
+  kill "$(cat /tmp/ss1-winexe-x11-present.pid)" 2>/dev/null || true
+  rm -f /tmp/ss1-winexe-x11-present.pid
 fi
-ls -l "$PREFIX/drive_c/tone.wav"
+for d in /proc/[0-9]*; do
+  c=$(cat "$d/comm" 2>/dev/null) || continue
+  case "$c" in
+    ss1-winexe-x11-*) kill "${d#/proc/}" 2>/dev/null || true ;;
+  esac
+done
+
+WAV30="$PREFIX/drive_c/tone30.wav"
+if [ ! -f "$WAV30" ]; then
+  echo "missing $WAV30" >&2
+  exit 1
+fi
+ls -l "$WAV30" "$PREFIX/drive_c/tone.wav"
 
 export WINELOADER="$WINEELF"
 export WINESERVER="${WINESERVER:-$WIN/bin/wineserver}"
 export WINEDLLOVERRIDES="winemenubuilder.exe=d;mshtml=d;ieframe=d"
+export FONTCONFIG_PATH="${FONTCONFIG_PATH:-$WIN/host-libs/etc/fonts}"
+export FONTCONFIG_FILE="${FONTCONFIG_FILE:-$WIN/host-libs/etc/fonts/fonts.conf}"
 export WINEDEBUG="${WINEDEBUG:-+err}"
 export BOX86_NOBANNER=1
 export BOX86_LOG="${BOX86_LOG:-0}"
@@ -75,20 +91,25 @@ echo "===== wine mem before ====="
 [ -x "$WIN/bin/ss1-winexe-mem-wine.sh" ] && "$WIN/bin/ss1-winexe-mem-wine.sh" | tee -a "$LOG"
 alsa before | tee -a "$LOG"
 
-# Background so we can sample ALSA while the 3s tone runs.
-timeout 20 stdbuf -oL -eL "$BOX86" "$WINEELF" "$EXE" >>"$LOG" 2>&1 &
+# Background; leave playing for physical listen. 30s WAV + Wine startup.
+timeout 55 stdbuf -oL -eL "$BOX86" "$WINEELF" "$EXE" "C:\\tone30.wav" >>"$LOG" 2>&1 &
 WPID=$!
 echo $WPID > /tmp/ss1-wine.pid
-sleep 2
-echo "===== wine mem t+2s =====" | tee -a "$LOG"
+echo "PLAYING pid=$WPID — leave this running for physical listen"
+sleep 6
+echo "===== wine mem t+6s =====" | tee -a "$LOG"
 [ -x "$WIN/bin/ss1-winexe-mem-wine.sh" ] && "$WIN/bin/ss1-winexe-mem-wine.sh" | tee -a "$LOG"
-alsa t+2s | tee -a "$LOG"
-wait $WPID
-rc=$?
-
-echo "===== after rc=$rc ====="
-mem
-alsa after
-echo "log=$LOG bytes=$(wc -c < "$LOG")"
-grep -E 'DSHOW |WaveParser|FilterGraph|RenderFile|FILTER |DURATION |STATE |POS |Run |WAIT |hr=|Error|err:|fixme:gstreamer|winegstreamer|native\(wrapped\) libgst' "$LOG" | head -80
-exit $rc
+alsa t+6s | tee -a "$LOG"
+echo "===== cpu t+6s ====="
+awk '/^cpu /{print}' /proc/stat
+for d in /proc/[0-9]*; do
+  c=$(cat "$d/comm" 2>/dev/null) || continue
+  case "$c" in
+    ss1-winexe-dsho|wine|wineserver|start.exe)
+      pid=${d#/proc/}
+      echo "proc $c pid=$pid utime=$(awk '{print $14,$15}' "$d/stat") rss=$(awk '/^VmRSS:/{print $2}' "$d/status")"
+      ;;
+  esac
+done
+echo "log=$LOG — harness still running; not waiting so the tone stays audible"
+exit 0
