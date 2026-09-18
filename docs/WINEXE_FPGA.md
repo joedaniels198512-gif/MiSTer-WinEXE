@@ -1,14 +1,13 @@
-# WinEXE_Test FPGA core
+# WinEXE FPGA core
+
+Public name: **WinEXE**. Artifact: **`WinEXE.rbf`**.
 
 Status: sources in `fpga/`. Quartus 17.0 compile is GitHub Actions
-(`.github/workflows/build-winexe-core.yml`), not local. Colour-bar HDMI
-and the Wine GUI path are **proven**. FPGA timing/video is frozen.
-
-OSD application profiles and custom Main are ARM-side first:
-[WINEXE_CORE.md](WINEXE_CORE.md). **Do not start Quartus until that
-architecture is agreed.** The first OSD-enabled build only changes
-`CONF_STR` (core name `WinEXE`, Application / Launch / Restart / Stop).
-WMP is parked and is not an OSD item.
+(`.github/workflows/build-winexe-core.yml`), not local. HDMI colour bars
+and the Wine GUI path are proven. FPGA timing/video is frozen for this
+beta. `CONF_STR` core name is `WinEXE`. WMP is parked and is not an OSD
+item. Historical checkout names such as `WinEXE_Test` refer to the same
+core.
 
 
 This core’s only job is a linear RGB framebuffer that the ARM side writes
@@ -34,12 +33,12 @@ Wine / winex11
        + evdev (event0 mouse, event1 keyboard, GrabDevice false)
     → ss1-winexe-x11-present (MIT-SHM + XFixes cursor; optional skip/dirty)
     → /dev/mem 0x30000000 BGRX stride 2560
-    → WinEXE_Test.rbf ascal → HDMI
+    → WinEXE.rbf ascal → HDMI
 ```
 
 ## Why not the parked Xorg/HPS path
 
-When `WinEXE_Test.rbf` is loaded, the **core** owns HDMI. MiSTer Main’s
+When `WinEXE.rbf` is loaded, the **core** owns HDMI. MiSTer Main’s
 HPS planes (n=0 `/dev/fb0`, n=1 wallpaper) and `ss1-fb-present.sh` are
 not the visible path.
 
@@ -87,7 +86,7 @@ Core outputs:
 - `VIDEO_ARX/ARY = 4:3`
 - Dummy/black `VGA_*` so analog VGA is inert (`VGA_DISABLE` if needed)
 - `VGA_F1 = 0`, `HDMI_BOB_DEINT = 0` (progressive)
-- Minimal OSD: Reset only (`CONF_STR = "WinEXE_Test;;"`)
+- OSD: `CONF_STR = "WinEXE;;"` plus Load Application / Restart / Stop
 
 HDMI **connector** timing stays whatever `MiSTer.ini` `video_mode` already
 is (on this SS1: mode 8 = 1920×1080@60). ascal scales the 640×480 FB into
@@ -163,8 +162,8 @@ the running core. F12 still opens the MiSTer OSD on top, which is desired.
 
 ## First physical test (before Wine)
 
-1. Build `WinEXE_Test.rbf` (Quartus 17.0 Docker — **not started**).
-2. Copy to `/media/fat/WinEXE_Test.rbf`.
+1. Build `WinEXE.rbf` (Quartus 17.0 via GitHub Actions).
+2. Copy to `/media/fat/_Computer/WinEXE.rbf`.
 3. Load it from the MiSTer menu (MENU disappears; core owns HDMI).
 4. SSH: run `ss1-winexe-present pattern`.
 5. Pass: stable HDMI sync + obvious colour bars/checkerboard.
@@ -183,7 +182,7 @@ Wine / winex11
        + existing evdev (event0 mouse, event1 keyboard, GrabDevice false)
     → ss1-winexe-x11-present (MIT-SHM GetImage + XFixes cursor)
     → /dev/mem 0x30000000 BGRX stride 2560
-    → WinEXE_Test.rbf ascal → HDMI
+    → WinEXE.rbf ascal → HDMI
 ```
 
 Xvfb was rejected because it has no native USB evdev path. Dummy keeps
@@ -307,7 +306,7 @@ step after every OSD use.
 
 - `fpga/` — DVD `sys/` + 27 MHz PLL, `WinEXE.sv` / `.qsf` / `.qpf` / `.qip`
 - `.github/workflows/build-winexe-core.yml` — disk-free +
-  `raetro/quartus:17.0` → `WinEXE_Test.rbf`
+  `raetro/quartus:17.0` → `WinEXE.rbf`
 - `.github/workflows/build-winexe-presenter.yml` — Debian Bullseye armhf
   cross-build of `ss1-winexe-x11-present`
 - `scripts/ss1-winexe-present.c` — ARM BGRX colour-bar writer

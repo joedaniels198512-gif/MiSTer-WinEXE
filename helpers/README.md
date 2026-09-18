@@ -1,8 +1,8 @@
 # WinEXE helpers
 
 Per-profile `pre` / `post` / `background` / `cleanup` commands resolve
-here, then `/media/fat/Windows/bin`.
+from `/media/fat/Windows/bin` (see `release/runtime-files.list`).
 
-Current helpers still live as `scripts/ss1-winexe-*.sh` and are installed
-into `bin/` (toolbar watcher, Winamp stamp, SC2K registry). Do not put
-copyrighted application binaries in this directory.
+Do not put copyrighted application binaries in this directory.
+Development-only WMP/DShow/injector sources stay under `scripts/` and
+are not installed by `install.sh`.

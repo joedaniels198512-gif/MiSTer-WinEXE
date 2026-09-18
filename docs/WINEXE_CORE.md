@@ -1,16 +1,14 @@
-# WinEXE core — Phase 1 architecture
+# WinEXE core — launcher, profiles, OSD
 
-WMP is **parked**. Do not continue WMP memory/audio work. C&C is the first
-new profile (index 4) and a DirectDraw probe only — do not add PAL8/RGB565
-or FPGA video changes until that probe has evidence.
-This document is the Phase 1 deliverable: ARM/Main/profile design **before**
-any Quartus build.
+Public product name: **WinEXE**. Public RBF filename: **`WinEXE.rbf`**.
+
+This is the ARM/Main/profile design that is running today. See
+[README.md](../README.md) for the current user-facing description.
+WMP playback is parked. PAL8 exists for Command & Conquer; desktop apps
+use BGRX.
 
 One shared `WinEXE.rbf`. Application differences live in INI profiles and
 one launcher. OSD uses stock MiSTer `CONF_STR` / `status[]` / `user_io`.
-
-**Do not start the ~10–15 minute GitHub Actions FPGA job until this layout
-is agreed.** FPGA sources in `fpga/WinEXE.sv` are unchanged in this phase.
 
 ## 1. Profile schema
 
@@ -68,8 +66,8 @@ registry=                # documentation / stamp input
 script=                  # used if helpers.pre is empty
 ```
 
-`fb_format` is reserved. The presenter still writes 640×480 BGRX at
-`0x30000000`. Do not implement RGB565/PAL8 yet.
+`fb_format` is reserved for profile text. Desktop apps use BGRX at
+`0x30000000`. C&C may enable the existing PAL8 mailbox path.
 
 The launcher has **no** SC2K or Winamp `if` branches. Proven fixes are INI:
 
@@ -106,8 +104,8 @@ Target on the SD card:
   x11/ host-libs/        existing (not moved)
 ```
 
-Today’s `WinEXE_Test.rbf` at `/media/fat/` stays until the first OSD RBF
-is installed. Copyrighted EXEs stay out of git (`apps/README.md`).
+Install `WinEXE.rbf` at `/media/fat/_Computer/WinEXE.rbf`.
+Copyrighted EXEs stay out of git (`apps/README.md`).
 
 ## 3. OSD menu
 
@@ -249,7 +247,7 @@ Idle (no Xorg): watcher stopped; stock grab is correct for OSD-only.
 
 Not built this phase: Quartus RBF, `MiSTer_WinEXE` binary, CONF_STR edit.
 
-SSH test on the current `WinEXE_Test.rbf`:
+SSH test on `WinEXE.rbf`:
 
 ```
 ss1-winexe-install-layout.sh /media/fat
@@ -260,25 +258,11 @@ ss1-winexe-launch.sh stop
 
 OSD Launch cannot work until the first CONF_STR rebuild.
 
-## 9. FPGA changes for the first OSD-enabled RBF
+## 9. FPGA artifact
 
-**Warn before starting the GHA Quartus job (~10–15 minutes).** One remote
-build after this architecture is agreed. Do not produce per-app RBFs.
-
-Edit **only** `fpga/WinEXE.sv` `CONF_STR` (and the status-bit comment):
-
-1. Rename `"WinEXE_Test;;"` → `"WinEXE;;"` so `/tmp/CORENAME` and the
-   `[WinEXE]` section in `MiSTer.ini` match.
-2. Insert the Status Bit Map comment in §3.
-3. Add `O[2:1]`, `T[4]`, `T[5]`, `T[6]` as in §3.
-4. Keep `T[0]` / `R[0]` Reset.
-5. Do **not** wire `status[]` into video/audio RTL. Launch is ARM-side.
-6. Keep VGA RGB = 0 (black) and `MISTER_FB` 640×480 BGRX at `0x30000000`.
-7. Ship `WinEXE.rbf` (GHA already uploads `WinEXE.rbf` and `WinEXE_Test.rbf`).
-8. Install under `/media/fat/_Computer/` (or `_Console/`). Keep the old
-   `WinEXE_Test.rbf` until the new core is proven.
-
-Optional later (not this RBF): FB format bits for RGB565/PAL8.
+`CONF_STR` is already `"WinEXE;;"`. GitHub Actions compiles
+`fpga/WinEXE.qpf` and publishes **`WinEXE.rbf`**. Install it under
+`/media/fat/_Computer/` (or `_Console/`). Do not produce per-app RBFs.
 
 ## Idle state
 

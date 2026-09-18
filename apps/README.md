@@ -1,70 +1,24 @@
 # Drop Windows applications here
 
-Copy genuine 32-bit (PE32 / i386) files onto the SuperStation. **Do not
-commit them** — they are copyrighted.
+Copy genuine 32-bit (PE32 / i386) files onto the SuperStation.
+**Do not commit them.** They are copyrighted.
+
+Full per-app table: [docs/APPS.md](../docs/APPS.md).
 
 ```
-/media/fat/Windows/apps/notepad.exe      # XP SP3 Notepad (proven)
-/media/fat/Windows/apps/mspaint.exe      # XP SP3 Paint (proven)
-/media/fat/Windows/apps/MFC42u.dll       # sidecar from the same ISO if Paint needs it
+/media/fat/Windows/apps/notepad.exe
+/media/fat/Windows/apps/mspaint.exe
+/media/fat/Windows/apps/MFC42u.dll
+/media/fat/Windows/apps/xp-games/     # winmine.exe sol.exe freecell.exe mshearts.exe cards.dll
+/media/fat/Windows/apps/cnc/          # C&C95.EXE + HDD data
+/media/fat/Windows/apps/civ2/         # civ2.exe + HDD data
 ```
 
-Winamp 2.91 installs into the prefix:
+Winamp 2.91 and SimCity 2000 live in the Wine prefix (`C:\Program Files\Winamp`,
+`C:\SC2K\`). Disc images stay under `/media/fat/Windows/iso/` on the
+device only.
 
-```
-C:\Program Files\Winamp\winamp.exe
-```
+OSD: load **WinEXE**, then **Load Application...**.
+SSH: `/media/fat/Windows/bin/ss1-winexe-launch.sh launch notepad`
 
-SimCity 2000 Special Edition (Win95 tree, not DOS):
-
-```
-C:\SC2K\          # entire WIN95/SC2K/ folder, not only SIMCITY.EXE
-```
-
-Saves belong under `C:\SC2K\Cities\`, not Program Files.
-
-Command & Conquer Gold (Nod Windows 95, not DOS `CONQUER.EXE`, not in git):
-
-```
-/media/fat/Windows/apps/cnc/     # extracted InstallShield SETUP.Z (C&C95.EXE + HDD MIX)
-/media/fat/Windows/iso/CnC_NOD95.iso   # original NOD95 disc; helper mounts as Wine D:
-```
-
-Do not run the disc `SETUP.EXE` (16-bit InstallShield stub). OSD loads
-`Command & Conquer.wex`. DirectDraw / CD diagnostic:
-[docs/CNC_DDRAW.md](../docs/CNC_DDRAW.md). The CD helper registers
-Wine D: as CD-ROM via `apps/diag/ss1-cnc-cdprobe.exe` (rebuild from
-`scripts/ss1-cnc-cdprobe.c`; not a C&C binary).
-
-Windows Media Player 9 (genuine XP SP3 9.00.00.4503, not in git):
-
-```
-/media/fat/Windows/apps/wmp9/   # extracted from the clean XP ISO
-```
-
-Install with `ss1-winexe-wmp9-install.sh`. That copies into the prefix
-only and does **not** overwrite Wine `quartz.dll`. See
-[docs/WMP9_DSHOW.md](../docs/WMP9_DSHOW.md).
-
-## Launch
-
-OSD (after the first WinEXE CONF_STR rebuild): Application + Launch.
-
-SSH today:
-
-```sh
-/media/fat/Windows/bin/ss1-winexe-launch.sh launch notepad
-/media/fat/Windows/bin/ss1-winexe-launch.sh launch paint
-/media/fat/Windows/bin/ss1-winexe-launch.sh launch winamp2
-/media/fat/Windows/bin/ss1-winexe-launch.sh launch sc2k
-/media/fat/Windows/bin/ss1-winexe-launch.sh stop
-```
-
-Legacy wrappers still work (`ss1-winexe-notepad.sh`, `ss1-winexe-run-exe.sh`,
-…). WMP9 is parked: `ss1-winexe-wmp9.sh` / `profiles/experimental/wmp9.ini`.
-
-`ss1-run-exe.sh` is the older parked `/dev/fb0` helper. Use the
-`ss1-winexe-*` launchers on `WinEXE_Test` / `WinEXE`.
-
-Do not put 64-bit (PE32+) binaries here. Box86 + Wine 7.1 i386 will
-refuse them.
+Do not put PE32+ (64-bit) binaries here.

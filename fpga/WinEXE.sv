@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// WinEXE_Test: ARM writes 640x480x32 BGRX at 0x30000000; ascal displays it.
+// WinEXE: ARM writes 640x480x32 BGRX at 0x30000000; ascal displays it.
 // Direct PAL8 prototype: optional 640x480x8 at 0x30200000 + 256-entry
 // palette at 0x3024B000. Mailbox 0x30400000 bit0 selects PAL8 vs BGRX.
 // Pixel scanout stays on ascal's vbuf port. DDRAM_* is only a mailbox

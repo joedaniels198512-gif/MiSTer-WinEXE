@@ -1,175 +1,155 @@
-# SuperStation Windows
+# WinEXE
 
-Prepared Wine/Box86 pieces for running 32-bit Windows programs on a
-SuperStation One (MiSTer Linux, Cortex-A9).
+WinEXE is a shared **MiSTer / SuperStation** environment for running
+selected 32-bit Windows programs through **Wine 7.1** and **Box86**,
+with FPGA-backed **640×480** HDMI output.
 
-A normal install should be: copy/unzip a package onto `/media/fat/Windows`
-and run a launcher. No Docker, compiler, or `wineboot` on the device.
+One FPGA core, one generic launcher, per-application INI profiles, and
+`.WEX` OSD entries. You supply legally obtained application files.
 
-GitHub: [joedaniels198512-gif/superstation-windows](https://github.com/joedaniels198512-gif/superstation-windows)
+**Version:** v0.1.0-beta
 
-## Current status (2026-09-17)
+This repository does **not** contain Microsoft Windows, game, or media
+payloads.
 
-**WMP is parked.** Do not continue WMP memory/audio work. Do not start C&C.
-Next milestone: one shared `WinEXE.rbf` with OSD application profiles.
-Architecture (no Quartus yet): [docs/WINEXE_CORE.md](docs/WINEXE_CORE.md).
-
-Live path (do not use `/dev/fb0` / F9 / `ss1-fb-present` for these apps):
+## What it is
 
 ```
-Wine 7.1 i386 → Box86 → dummy Xorg 640×480 RAM
-  → ss1-winexe-x11-present (SHM + XFixes cursor)
-  → /dev/mem 0x30000000 BGRX stride 2560
-  → WinEXE_Test.rbf ascal → HDMI
+Wine 7.1 i386  →  Box86 (ARMv7 / Cortex-A9)
+       ↓
+dummy Xorg 640×480 (no /dev/fb0 scanout)
+       ↓
+ss1-winexe-x11-present  (BGRX, skip-unchanged, cursor-only DDR)
+       ↓
+FPGA DDR @ 0x30000000  →  WinEXE.rbf (ascal)  →  HDMI
 ```
 
-Multimedia (WMP / DirectShow) uses **`box86-gstflow`** only. The original
-`box86` binary is the untouched rollback and remains the default Wine
-loader. Full write-up: [docs/WMP9_DSHOW.md](docs/WMP9_DSHOW.md).
+Optional **PAL8** scanout (C&C) writes an 8-bit framebuffer and palette
+mailbox. Desktop apps stay on the BGRX presenter.
 
-### PROVEN
+A warm **READY** session keeps Xorg, the presenter, and input recovery
+alive. Launching an application joins the existing 640×480 Wine desktop.
+Stopping an application returns to READY instead of tearing the stack
+down. A launch-memory floor (default 48000 kB `MemAvailable`) refuses a
+start rather than risking a Linux OOM.
 
-* genuine XP Notepad (`apps/notepad.exe`, 5.1.2600.5512)
-* genuine XP Paint (`apps/mspaint.exe`; drop `MFC42u.dll` from the same ISO if needed)
-* Winamp 2.91 with physical audio and MP3 playback
-* original Win95 SimCity 2000 (`C:\SC2K\SIMCITY.EXE`)
-* FPGA-backed 640×480 display (`WinEXE_Test.rbf`, colour bars then GUI)
-* USB keyboard/mouse on dummy Xorg (evdev event0/event1, `GrabDevice false`)
-* OSD input recovery (`ss1-winexe-keep-input.sh` ungrabs mouse/keyboard after OSD close)
-* 30 Hz + dirty-region SC2K optimization (skip unchanged frames, 32×32 dirty spans)
-* SC2K CPU affinity (SIMCITY on CPU0, presenter+Xorg on CPU1)
-* SC2K floating toolbar stays above the city map (`ss1-winexe-sc2k-toolbar.sh`)
-* (parked) genuine XP SP3 WMP9 9.00.00.4503 UI launches
-* (parked) Wine DirectShow PCM WAV graph and physical WaveOut audio
+## Supported hardware
 
-### WMP9 — PARKED (kept, not in the OSD app list)
+- SuperStation One / MiSTer-class DE10-Nano (ARMv7, ~512 MB HPS RAM)
+- HDMI out from the WinEXE FPGA core
+- USB keyboard and mouse (see [Input](#input))
 
-Do **not** continue this work now. Sources stay in the repo: Box86
-GStreamer patches, `box86-gstflow`, GStreamer runtime, DirectShow
-harness, `ss1waveout.ax`, `docs/WMP9_DSHOW.md`. SSH-only via
-`ss1-winexe-wmp9.sh` / `profiles/experimental/wmp9.ini`. OSD list is
-Notepad, Paint, Winamp 2, SimCity 2000.
+## Quick install
 
-### WMP9 / DirectShow / GStreamer / WaveOut status (parked notes)
+No compiler on the device.
 
-* **WMP UI works.** Genuine `wmplayer.exe` 9.00.00.4503 launches on the
-  existing WinEXE stack via `ss1-winexe-wmp9.sh` / `wine-gstflow`.
-* **PCM playback works.** Minimal graph under `box86-gstflow`: Reader →
-  GStreamer splitter → audio renderer. Duration, Running state, real-time
-  position, and `EC_COMPLETE` are proven.
-* **Physical audio works.** Heard on SuperStation HDMI/line out through
-  winealsa.
-* **DirectSound is unstable.** Wine 7.1 maps both `CLSID_AudioRender` and
-  `CLSID_DSoundRender` to the DirectSound renderer. It drops samples and
-  crackles even with no WMP. Do not treat registry merits as a WaveOut
-  fix. Do not load XP quartz.
-* **Custom WaveOut renderer is the current preferred path.** Private
-  CLSID `{B7E3C101-5A42-4D8F-9C1E-A1B2C3D4E5F6}`, `DllGetClassObject`
-  only (no `regsvr32`). Path: DirectShow → GStreamer splitter →
-  `ss1waveout.ax` → WinMM `waveOut*` → winealsa.
-* **Best-known config:** 12 × 30 ms buffers (~360 ms), prime 9 before
-  `waveOutRestart`, 44.1 kHz / 16-bit / stereo. Physical listen: seemed
-  really good. 30 s PCM: 5,292,000 bytes received = submitted =
-  completed, dropped 0. One ~1095 ms Receive stall at t≈15.3 s; remaining
-  stutter source is upstream producer/scheduling stalls, not WaveOut
-  dropping data.
-* **Not yet tested** through the final WaveOut path: MP3, WMP
-  visualisations, WMP memory usage, wiring `ss1waveout.ax` into actual
-  WMP9 (best audio so far is the harness).
-* Do **not** implement `IReferenceClock`. Do **not** replace original
-  Box86. WMP next blocker is `wmplayer.exe` RAM, not the renderer.
-  Resume only after the WinEXE OSD core. Do not start C&C.
+1. Copy or unzip **WinEXE-v0.1.0-beta.zip** onto the SD card (or clone
+   this repo to a working directory).
+2. On the SuperStation, install the ARM layout once:
 
-### Frozen / do not casually change
+   ```sh
+   /path/to/WinEXE/install.sh /media/fat
+   ```
 
-FPGA core sources and HDMI timing, dummy-X video path, the original
-Box86 binary, Wine 7.1, and the prebuilt prefix layout. Application work
-should stay in launchers and the ARM presenter unless a specific app
-failure requires more. Multimedia tests use sidecar `box86-gst` /
-`box86-gstflow` binaries only.
+3. Place companion runtime artifacts (from GitHub Actions, or a previous
+   working SuperStation tree) under `/media/fat/Windows/`:
 
-### Parked
+   | Artifact | Path |
+   |---|---|
+   | Wine 7.1 i386 | `wine-installer/opt/wine-devel/` |
+   | Wine prefix (wineboot, no Microsoft apps) | `wineprefix-prebuilt/` (or `.ext4` loop) |
+   | Box86 | `box86-ss1/box86` |
+   | X11 runtime | `x11/` |
+   | Host libs | `host-libs/` |
+   | Presenter | `bin/ss1-winexe-x11-present` |
+   | Dummy video driver | `x11/lib/xorg/modules/drivers/dummy_drv.so` |
+   | PAL8 map (C&C) | `bin/ss1-pal8-map.so` |
+   | Custom Main | `/media/fat/MiSTer_WinEXE` |
 
-* Windows Media Player 9 / DirectShow / WaveOut — kept on disk, **not** in
-  the OSD app list. See [docs/WMP9_DSHOW.md](docs/WMP9_DSHOW.md).
-* Xorg `/dev/fb0` ShadowFB/software-cursor corruption and the n=1 HPS
-  presenter. That path still exists for history; WinEXE HDMI does not use it.
-  See [docs/X11_RUNTIME.md](docs/X11_RUNTIME.md).
+4. Copy **`WinEXE.rbf`** to `/media/fat/_Computer/WinEXE.rbf`
+   (or `/media/fat/_Console/WinEXE.rbf`). That is the only public core
+   name.
+5. Append `mister/WinEXE.ini` to `/media/fat/MiSTer.ini` if `[WinEXE]`
+   is missing (`main=MiSTer_WinEXE`).
+6. Put legally owned application files in the directories listed in
+   [docs/APPS.md](docs/APPS.md).
+7. Load **WinEXE** from the MiSTer OSD, then **Load Application...** and
+   pick a `.WEX`.
 
-### Not in git (copyrighted / generated)
+`install.sh` copies profiles, `.WEX` launchers, and the public launcher
+scripts. It does not copy Wine, Box86, or any game EXE.
 
-Genuine EXEs, the SC2K tree, Winamp, XP WMP9 binaries, MP3s, Wine prefix
-images, X11/host-libs tarballs, and compiled `.rbf` / presenter binaries.
-Rebuild those from Actions artifacts + your own media. See below.
+## Architecture
 
-## Layout on the SuperStation
-
-| Path | Role |
+| Piece | Role |
 |---|---|
-| `/media/fat/Windows/box86-ss1/box86` | Original Cortex-A9 Box86 (untouched rollback) |
-| `/media/fat/Windows/box86-ss1/box86-gst` | GStreamer factory/plugin Box86 (sidecar) |
-| `/media/fat/Windows/box86-ss1/box86-gstflow` | Working multimedia Box86 (sidecar; WMP/DShow) |
-| `/media/fat/Windows/wine-installer/opt/wine-devel/` | Wine 7.1 i386 |
-| `/media/fat/Windows/wineprefix-prebuilt.ext4` | Prefix image (loop-mounted) |
-| `/media/fat/Windows/wineprefix-prebuilt` | Mount point (`ss1-mount-prefix.sh`) |
-| `/media/fat/Windows/host-libs/` | Relocatable ARMHF fontconfig + deps |
-| `/media/fat/Windows/x11/` | Relocatable X.Org + dummy + evdev + winex11 libs |
-| `/media/fat/Windows/bin/` | Launchers + ARM presenter from this repo / Actions |
-| `/media/fat/Windows/apps/` | Drop genuine PE32 EXEs (Notepad, Paint, …) |
-| `/media/fat/Windows/profiles/` | OSD application INI files (no EXEs) |
-| `/media/fat/WinEXE_Test.rbf` | current FPGA core (rename to `WinEXE.rbf` after first OSD build) |
-
-## Launchers
-
-| Script | What it starts |
-|---|---|
-| `scripts/ss1-winexe-launch.sh` | Generic profile launcher (launch/osd/restart/stop/status) |
-| `scripts/ss1-winexe-notepad.sh` | Wrapper → `launch notepad` |
-| `scripts/ss1-winexe-run-exe.sh` | Paint profile, or ad-hoc EXE on the 60 Hz stack |
-| `scripts/ss1-winexe-winamp.sh` | Wrapper → `launch winamp2` (optional MP3 still allowed) |
-| `scripts/ss1-winexe-sc2k.sh` | Wrapper → `launch sc2k` (fixes live in `profiles/sc2k.ini`) |
-| `scripts/ss1-winexe-stop-wine.sh` | End the current Wine session only (keep Xorg/presenter/input) |
-| `scripts/ss1-winexe-wmp9.sh` | PARKED — genuine WMP9 via `wine-gstflow` |
-| `scripts/ss1-winexe-dshow.sh` | PARKED — PCM DirectShow harness → `ss1waveout.ax` |
-
-Presenter profiles (`scripts/ss1-winexe-present-restart.sh`):
-
-| App | `SS1_HZ` | skip | dirty |
-|---|---|---|---|
-| Notepad / Paint / Winamp | 60 | on | off |
-| SimCity 2000 | 30 | on | 32×32, 60% fallback |
-
-HDMI and dummy X stay 60 Hz. Only ARM DDR writes are paced.
-
-## Reconstruct the runtime
-
-1. Clone this repository.
-2. GitHub Actions artifacts (do not compile on the SuperStation):
-   - **Build WinEXE_Test FPGA core** → `WinEXE_Test.rbf`
-   - **Build WinEXE presenter** → `ss1-winexe-x11-present` plus `dummy_drv.so`
-   - **Prepare Wine 7.1 win32 prefix** → `wineprefix-prebuilt` (then pack as `.ext4` if the SD is exFAT)
-   - **Prepare ARMHF X11 runtime** → `x11-runtime.tar.xz` (fbdev + evdev; dummy comes from the presenter job)
-   - **Prepare ARMHF host-libs** → fontconfig bundle
-3. Copy the working Box86 + Wine 7.1 trees onto `/media/fat/Windows` (already
-   proven on this SuperStation; do not replace casually).
-4. Install scripts from `scripts/` to `/media/fat/Windows/bin/` and
-   profiles to `/media/fat/Windows/profiles/`
-   (`ss1-winexe-install-layout.sh`). Copy `dummy_drv.so` to
-   `/media/fat/Windows/x11/lib/xorg/modules/drivers/`.
-5. Drop genuine media on the device only:
-   - `apps/notepad.exe`, `apps/mspaint.exe` (+ `MFC42u.dll` if Paint asks)
-   - Winamp 2.91 into `C:\Program Files\Winamp`
-   - Win95 `WIN95/SC2K/` tree to `C:\SC2K\`
-   - WMP9 files into `/media/fat/Windows/apps/wmp9/` then `ss1-winexe-wmp9-install.sh`
-6. Load `WinEXE_Test.rbf` (today) or `WinEXE.rbf` (after the OSD FPGA
-   build), then `ss1-winexe-launch.sh launch notepad`.
+| `WinEXE.rbf` | Shared FPGA core: 640×480 ascal, BGRX DDR, optional PAL8 |
+| `ss1-winexe-launch.sh` | Generic launcher (boot / launch / stop / READY) |
+| `profiles/*.ini` | Per-app paths, presenter flags, helpers |
+| `games/WinEXE/*.wex` | OSD file-picker entries (`profile=...` only) |
+| Wine 7.1 + Box86 | Frozen usermode stack |
+| Dummy Xorg 640×480 | Off-screen desktop; not `/dev/fb0` |
+| `ss1-winexe-x11-present` | BGRX presenter into FPGA DDR |
+| `ss1-winexe-keep-input.sh` | Ungrab USB HID while the core is loaded |
 
 Details: [docs/WINEXE_CORE.md](docs/WINEXE_CORE.md),
 [docs/WINEXE_FPGA.md](docs/WINEXE_FPGA.md),
-[docs/WMP9_DSHOW.md](docs/WMP9_DSHOW.md),
 [docs/X11_RUNTIME.md](docs/X11_RUNTIME.md),
-[docs/WINE_PREFIX.md](docs/WINE_PREFIX.md),
-[docs/HOST_LIBS.md](docs/HOST_LIBS.md).
+[docs/WINE_PREFIX.md](docs/WINE_PREFIX.md).
 
-Do not change the working Wine, Box86, or prefix trees while adding
-`/media/fat/Windows/x11/`.
+## HDMI / presenter
+
+- The first frame after presenter start is always force-copied to DDR.
+- Later frames skip unchanged tiles when enabled.
+- Pointer motion updates a cursor rectangle instead of rewriting
+  640×480×4 (~1.2 MB) every time.
+- This is **not** a locked 60 fps guarantee. Some loads still miss
+  16.67 ms. Further optimisation is future work.
+
+## Memory
+
+- Stopping an app cleans that Wine process (including leftover
+  `mspmspsv.exe` from parked WMP sessions).
+- READY services stay warm.
+- `SS1_LAUNCH_MEM_FLOOR_KB` defaults to **48000**. Override the
+  environment variable if you must; do not treat retuning as a
+  supported beta feature.
+
+## Input
+
+Keep-input currently defaults to:
+
+- mouse: `/dev/input/event0` (`SS1_MOUSE_EVENT`)
+- keyboard: `/dev/input/event1` (`SS1_KBD_EVENT`)
+
+Those numbers match the development SuperStation. They are **not** a
+generic USB enumerator. If your devices land on other event nodes, set
+the two variables before boot. Mouse-speed OSD is **not implemented**.
+
+## Application policy
+
+WinEXE ships profiles and helpers only. See [docs/APPS.md](docs/APPS.md)
+for directories and filenames. Proven / parked status:
+[docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md).
+
+Do not add application binaries to this repository.
+
+## Reconstruct companion runtimes
+
+GitHub Actions (do not compile on the SuperStation):
+
+- **Build WinEXE FPGA core** → `WinEXE.rbf`
+- **Build WinEXE X11 presenter** → `ss1-winexe-x11-present`, `dummy_drv.so`
+- **Build WinEXE FPGA core** (ARM jobs) → `ss1-pal8-map.so`, C&C PAL8 PE
+- **Build MiSTer_WinEXE** → custom Main
+- **Prepare Wine 7.1 win32 prefix** → `wineprefix-prebuilt.tar.xz`
+- **Prepare ARMHF X11 runtime** / **host-libs** → tarballs
+
+Box86 is the existing SuperStation tree; do not replace it casually.
+
+## License
+
+Original WinEXE files: **GPL-2.0-or-later**. Combined FPGA core includes
+MiSTer files under GPL-2.0-or-later and GPL-3.0-or-later. Wine is LGPL;
+Box86 is MIT. See [LICENSE](LICENSE), [COPYING](COPYING), and
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

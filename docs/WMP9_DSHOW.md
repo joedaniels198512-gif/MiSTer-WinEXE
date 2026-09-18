@@ -1,9 +1,9 @@
-# WMP9 / DirectShow / GStreamer / WaveOut status
+# WMP / DirectShow / GStreamer / WaveOut status
 
-**PARKED (2026-09-17).** Do not continue WMP memory/audio integration.
-Do not start C&C. Keep this tree, `box86-gstflow`, GStreamer,
-`ss1waveout.ax`, and the harness. WMP is **not** in the WinEXE OSD app
-list. Architecture for the OSD core: [WINEXE_CORE.md](WINEXE_CORE.md).
+**PARKED.** The parked player is genuine **Windows Media Player 7.1**.
+This filename is historical. Do not continue WMP memory/audio
+integration in the v0.1.0-beta release. WMP is **not** in the WinEXE OSD
+list. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 
 Checkpoint date: 2026-09-17.
 

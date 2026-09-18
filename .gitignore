@@ -1,34 +1,79 @@
-# Generated Wine prefixes and packages — ship via GitHub Actions artifacts only
-wineprefix*/
+# =============================================================================
+# WinEXE — keep copyrighted and machine-local payloads OFF git.
+# .gitignore is not enough for files already committed; audit tracked history
+# before any public tag. Users place legally obtained Windows/game files only
+# under /media/fat/Windows/apps (and related local paths). Never commit them.
+# =============================================================================
+
+# User-supplied Windows / game trees (copyrighted)
+apps/**
+!apps/README.md
+**/wineprefix*/
+wine-installer/
 host-libs/
 x11/
 x11-runtime/
 .x11-work/
 .x11-extract/
-*.ext4
+.wine-prepare-work/
+.present-cross/
+
+# Disc images, ROMs, extracted media
+*.iso
+*.bin
+*.cue
 *.img
+*.rom
+*.wim
+*.cab
+*.msi
+extract*/
+tmp/
+temp/
+logs/
+
+# Audio / video (user or ripped media)
+*.avi
+*.wav
+*.mp3
+*.wma
+*.pcm
+*.mp4
+*.asf
+*.wmv
+
+# Windows binaries (unless a future CI job commits only project-built helpers)
+*.exe
+*.dll
+*.so
+*.o
+*.obj
+*.pyc
+scripts/__pycache__/
+
+# Prefix / filesystem images and packed runtimes
+*.ext4
 *.tar
 *.tar.xz
 *.tar.gz
 *.zip
 artifacts/
+dist/
+release-out/
 
-# User-supplied Windows binaries / extracted games (do not commit)
-apps/**
-!apps/README.md
+# Device dumps / framebuffer captures
+*.raw
+*.ppm
+*.bmp
+*.sav
 
-# Local presenter / FPGA extract leftovers and HDMI dumps
-.present-cross/
-logs/
+# Local presenter / FPGA leftovers
 /ss1-winexe-x11-present
 /ss1-winexe-present
-*.raw
-
-# Local extract / build leftovers
-build-box86/
-wine-installer/
-*.deb
-.DS_Store
+ss1-pal8-map.so
+ss1-civ2-cdaudio.so
+ss1-civ2-cdaudio-test
+dummy_drv.so
 
 # Quartus generated (compile is GitHub Actions)
 fpga/db/
@@ -41,3 +86,26 @@ fpga/*.qdf
 fpga/c5_pin_model_dump.txt
 fpga/PLLJ_PLLSPE_INFO.txt
 fpga/build_id.v
+
+# Lab-only Civ II / C&C injection leftovers (keep sources, not binaries)
+scripts/ss1-civ2-*.exe
+scripts/ss1-civ2-*.dll
+scripts/ss1-cnc-*.exe
+scripts/ss1-cnc-*.dll
+scripts/ss1-x11-bltwrap.so
+
+# Secrets
+**/.ssh/
+*.pem
+*.key
+*id_rsa*
+.env
+.env.*
+
+# Lab scratch (public issues live in docs/KNOWN_ISSUES.md)
+docs/KNOWN.md
+
+# Host clutter
+*.deb
+.DS_Store
+build-box86/

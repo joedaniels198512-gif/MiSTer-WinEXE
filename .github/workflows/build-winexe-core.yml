@@ -1,4 +1,4 @@
-name: Build WinEXE_Test FPGA core
+name: Build WinEXE FPGA core
 
 on:
   workflow_dispatch:
@@ -33,6 +33,9 @@ jobs:
           arm-linux-gnueabihf-gcc -O2 -Wall -fPIC -shared -pthread \
             -o ss1-pal8-map.so scripts/ss1-pal8-map.c
           arm-linux-gnueabihf-size ss1-pal8-map.so
+          arm-linux-gnueabihf-gcc -O2 -Wall -fPIC -shared -pthread \
+            -o ss1-civ2-cdaudio.so scripts/ss1-civ2-cdaudio.c -ldl
+          arm-linux-gnueabihf-size ss1-civ2-cdaudio.so
       - uses: actions/upload-artifact@v4
         with:
           name: ss1-winexe-present
@@ -42,6 +45,11 @@ jobs:
         with:
           name: ss1-pal8-map.so
           path: ss1-pal8-map.so
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ss1-civ2-cdaudio.so
+          path: ss1-civ2-cdaudio.so
           if-no-files-found: error
 
   compile-pal8-guest:
@@ -71,7 +79,7 @@ jobs:
           if-no-files-found: error
 
   compile-fpga:
-    name: Quartus 17 WinEXE_Test.rbf
+    name: Quartus 17 WinEXE.rbf
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -118,19 +126,13 @@ jobs:
           docker run --rm -v "$GITHUB_WORKSPACE/fpga:/build" -w /build \
             raetro/quartus:17.0 \
             sh -c 'quartus_sh --flow compile WinEXE.qpf'
-          cp -f fpga/output_files/WinEXE.rbf "$GITHUB_WORKSPACE/WinEXE_Test.rbf"
-          ls -l fpga/output_files/WinEXE.rbf WinEXE_Test.rbf
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: WinEXE_Test.rbf
-          path: WinEXE_Test.rbf
-          if-no-files-found: error
+          cp -f fpga/output_files/WinEXE.rbf "$GITHUB_WORKSPACE/WinEXE.rbf"
+          ls -l fpga/output_files/WinEXE.rbf
 
       - uses: actions/upload-artifact@v4
         with:
           name: WinEXE.rbf
-          path: fpga/output_files/WinEXE.rbf
+          path: WinEXE.rbf
           if-no-files-found: error
 
       - name: Upload compilation reports

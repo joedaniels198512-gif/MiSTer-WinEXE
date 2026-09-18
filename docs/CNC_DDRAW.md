@@ -1,5 +1,7 @@
 # C&C Gold DirectDraw diagnostic (Wine 7.1 / WinEXE)
 
+Developer notes. C&C binaries and ISOs are not in git.
+
 Stock `C&C95.EXE` is not in git. SuperStation copy MD5
 `aae55c89aa7927e5c0d4519ef9684a01` (unchanged on disk). Official Westwood XP
 `THIPX32.DLL` only. `CONQUER.INI`: `Resolution=1`, `VideoBackBuffer=1`,

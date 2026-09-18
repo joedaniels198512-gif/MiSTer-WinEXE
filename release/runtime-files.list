@@ -1,0 +1,31 @@
+# Public runtime files copied to /media/fat/Windows/bin
+# Paths are relative to the repository scripts/ directory unless noted.
+# Development-only WMP/DShow/Civ-II injectors are intentionally omitted.
+
+ss1-winexe-launch.sh
+ss1-winexe-xorg.sh
+ss1-winexe-present-restart.sh
+ss1-winexe-stop-wine.sh
+ss1-winexe-keep-input.sh
+ss1-winexe-ungrab-input.sh
+ss1-winexe-blank.sh
+ss1-winexe-install-layout.sh
+ss1-winexe-check-layout.sh
+ss1-x11-env.sh
+ss1-xorg.sh
+ss1-mount-prefix.sh
+xorg.winexe.conf
+ss1-winexe-cnc-cd.sh
+ss1-cnc-pal8.sh
+ss1-cnc-capslie.sh
+ss1-winexe-civ2-cd.sh
+ss1-winexe-civ2-cdaudio.sh
+ss1-winexe-sc2k.sh
+ss1-winexe-sc2k-config.sh
+ss1-winexe-sc2k-toolbar.sh
+ss1-winexe-sc2k.reg
+ss1-winexe-winamp.sh
+ss1-winexe-winamp-config.sh
+ss1-winexe-notepad.sh
+ss1-winexe-run-exe.sh
+ss1-winexe-freecell-deal.sh
