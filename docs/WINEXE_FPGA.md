@@ -107,9 +107,12 @@ Kernel: `mem=511M memmap=513M$511M`
 |---|---|---|---|
 | Linux | `0x00000000`–`0x1FEFFFFF` | 511 MB | — |
 | HPS `MiSTer_fb` n=0/1/2 | `0x22000000` | ~24 MB | **outside** RAM (parked path) |
-| **WinEXE FB A** | **`0x30000000`** | 640×480×4 = 1 228 800 | **OK, no overlap** |
-| WinEXE FB B (reserved) | `0x30200000` | same | OK (unused in v1) |
-| mailbox (reserved) | `0x30400000` | 4 KB | OK (unused in v1) |
+| **WinEXE FB A BGRX32** | **`0x30000000`** | 640×480×4 = 1 228 800 | **OK, no overlap** |
+| **PAL8 pixels** | **`0x30200000`** | 640×480×1 = 307 200, stride 640 | was FB B; prototype uses this |
+| **PAL8 palette** | **`0x3024B000`** | 256 × 32-bit `00RRGGBB` = 1024 | outside pixel range |
+| PAL8 stats (ARM) | `0x3024C000` | 4 KB | not read by FPGA |
+| pad | … `0x303FFFFF` | — | — |
+| **mailbox** | **`0x30400000`** | 4 KB | magic `P8L8`, flags bit0 = PAL8 vs BGRX |
 
 Same A/B/mailbox **base** the DVD player already mmap’d successfully on
 this board. Spacing is 2 MB (DVD used that for 720×576×4 ≈ 1.6 MB; our
@@ -118,7 +121,9 @@ single-buffered. Tearing is acceptable for bars + Notepad proof.
 
 ARM `DDRAM_ADDR` in the FPGA is `byte_addr[31:3]`, so
 `0x30000000 >> 3 = 0x06000000` if we ever issue DDRAM reads ourselves.
-v1 does not; ascal does.
+v1 ascal does the BGRX pixel reads. The PAL8 prototype adds `pal8_fbctl`
+which reads mailbox `0x30400000 >> 3 = 0x06080000` once per VBlank and,
+on palette generation change, `0x3024B000 >> 3 = 0x06049600` (1 KB).
 
 ## How ARM writes
 

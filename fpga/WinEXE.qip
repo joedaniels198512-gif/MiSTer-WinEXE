@@ -1,3 +1,4 @@
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/vga640.v
+set_global_assignment -name VERILOG_FILE rtl/pal8_fbctl.v
 set_global_assignment -name SDC_FILE WinEXE.sdc
 set_global_assignment -name SYSTEMVERILOG_FILE WinEXE.sv

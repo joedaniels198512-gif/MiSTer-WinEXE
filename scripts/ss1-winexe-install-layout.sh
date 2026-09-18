@@ -20,6 +20,20 @@ mkdir -p \
   "$ROOT/_Console"
 
 cp -f "$REPO"/scripts/ss1-winexe-*.sh "$WIN/bin/" 2>/dev/null || true
+cp -f "$REPO"/scripts/ss1-cnc-pal8.sh "$WIN/bin/" 2>/dev/null || true
+chmod +x "$WIN/bin/ss1-cnc-pal8.sh" 2>/dev/null || true
+if [ -f "$REPO/ss1-pal8-map.so" ]; then
+  cp -f "$REPO/ss1-pal8-map.so" "$WIN/bin/"
+elif [ -f "$REPO/scripts/ss1-pal8-map.so" ]; then
+  cp -f "$REPO/scripts/ss1-pal8-map.so" "$WIN/bin/"
+fi
+if [ -f "$REPO/ss1-cnc-pal8.exe" ] || [ -f "$REPO/scripts/ss1-cnc-pal8.exe" ]; then
+  mkdir -p "$WIN/apps/diag"
+  cp -f "$REPO/ss1-cnc-pal8.exe" "$WIN/apps/diag/" 2>/dev/null || true
+  cp -f "$REPO/scripts/ss1-cnc-pal8.exe" "$WIN/apps/diag/" 2>/dev/null || true
+  cp -f "$REPO/ss1-cnc-pal8.dll" "$WIN/apps/diag/" 2>/dev/null || true
+  cp -f "$REPO/scripts/ss1-cnc-pal8.dll" "$WIN/apps/diag/" 2>/dev/null || true
+fi
 cp -f "$REPO"/scripts/ss1-winexe-wex-trace.py "$WIN/bin/" 2>/dev/null || true
 chmod +x "$WIN/bin/ss1-winexe-wex-trace.py" 2>/dev/null || true
 cp -f "$REPO"/scripts/ss1-winexe-*.reg "$WIN/bin/" 2>/dev/null || true

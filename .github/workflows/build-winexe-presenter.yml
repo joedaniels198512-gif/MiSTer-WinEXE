@@ -8,6 +8,7 @@ on:
   push:
     paths:
       - "scripts/ss1-winexe-x11-present.c"
+      - "scripts/ss1-pal8.h"
       - ".github/workflows/build-winexe-presenter.yml"
 
 permissions:

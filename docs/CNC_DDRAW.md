@@ -3,7 +3,9 @@
 Stock `C&C95.EXE` is not in git. SuperStation copy MD5
 `aae55c89aa7927e5c0d4519ef9684a01` (unchanged on disk). Official Westwood XP
 `THIPX32.DLL` only. `CONQUER.INI`: `Resolution=1`, `VideoBackBuffer=1`,
-`HardwareFills=0`. No cnc-ddraw, no PAL8, no FPGA video change, no EXE patch.
+`HardwareFills=0`. No cnc-ddraw, no on-disk EXE patch. Direct PAL8 present
+is an optional prototype (`SS1_PAL8=1`): cached 640×480×8 → one 307 200-byte
+copy to `0x30200000` + palette at `0x3024B000`. See `scripts/ss1-pal8.h`.
 
 ## What Wine actually provides
 
@@ -89,15 +91,12 @@ C&C’s own log: `GetDriveTypeW c:\\ → 3`, `d:\\ → 5`, `z:\\ → 3`, then
 poll. Wine Application Error dialog. No EXE patch. Icon-cache
 `SYSTEMMEMORY` test at `0xC9507` was not reached.
 
-## Later architecture (not started)
+## Direct PAL8 prototype (not a generic ddraw backend)
 
-If more old-VRAM `GetCaps` checks appear, keep counting them with the
-same in-memory instrument. Do not patch the EXE. Candidates after a
-full playthrough:
-
-- A: small generic DirectDraw GetCaps compatibility shim (profile)
-- B: PAL8 / shared-DDR video-memory backend
-- C: both
+Runtime-only: `ss1-pal8-map.so` identity-maps FPGA DDR; `ss1-cnc-pal8.dll`
+hooks `ddraw_surface_update_frontbuffer` and skips GDI/X for the qualifying
+fullscreen P8 primary. Mailbox `0x30400000` bit0 selects PAL8 vs BGRX.
+Stop/cleanup clears the flag so Explorer stays on the working BGRX path.
 
 `ss1-cnc-ddraw.exe` / `ss1-cnc-focus.exe` / `ss1-cnc-capslie.exe` are
 rebuildable PE32 probes. Do not ship copyrighted C&C files.

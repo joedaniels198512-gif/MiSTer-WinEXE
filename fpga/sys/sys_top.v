@@ -1032,7 +1032,9 @@ always @(posedge clk_pal) begin
 	old_vs1 <= hdmi_vs;
 	old_vs2 <= old_vs1;
 	
-	if(~old_vs2 & old_vs1 & ~FB_FMT[2] & FB_FMT[1] & FB_FMT[0] & FB_EN) pal_req <= ~pal_req;
+	// Linux LFB 8bpp palette lives at LFB_BASE-4096. Do not issue that
+	// read when only the core framebuffer is on (PAL8 uses FB_PAL_* / pal2).
+	if(~old_vs2 & old_vs1 & ~FB_FMT[2] & FB_FMT[1] & FB_FMT[0] & FB_EN & LFB_EN) pal_req <= ~pal_req;
 end
 
 

@@ -50,7 +50,8 @@ set_global_assignment -name SEED 1
 # ascal reads the ARM-written linear framebuffer. Required for v1.
 set_global_assignment -name VERILOG_MACRO "MISTER_FB=1"
 
-#set_global_assignment -name VERILOG_MACRO "MISTER_FB_PALETTE=1"
+# Direct PAL8 prototype: ascal pal2_mem + FB_PAL_* from pal8_fbctl.
+set_global_assignment -name VERILOG_MACRO "MISTER_FB_PALETTE=1"
 #set_global_assignment -name VERILOG_MACRO "MISTER_DEBUG_NOHDMI=1"
 #set_global_assignment -name VERILOG_MACRO "MISTER_DOWNSCALE_NN=1"
 #set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_ADAPTIVE=1"

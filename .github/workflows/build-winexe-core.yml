@@ -6,6 +6,8 @@ on:
     paths:
       - "fpga/**"
       - "scripts/ss1-winexe-present.c"
+      - "scripts/ss1-pal8-map.c"
+      - "scripts/ss1-pal8.h"
       - ".github/workflows/build-winexe-core.yml"
 
 permissions:
@@ -28,10 +30,44 @@ jobs:
           arm-linux-gnueabihf-gcc -O2 -Wall -static \
             -o ss1-winexe-present scripts/ss1-winexe-present.c
           arm-linux-gnueabihf-size ss1-winexe-present
+          arm-linux-gnueabihf-gcc -O2 -Wall -fPIC -shared -pthread \
+            -o ss1-pal8-map.so scripts/ss1-pal8-map.c
+          arm-linux-gnueabihf-size ss1-pal8-map.so
       - uses: actions/upload-artifact@v4
         with:
           name: ss1-winexe-present
           path: ss1-winexe-present
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ss1-pal8-map.so
+          path: ss1-pal8-map.so
+          if-no-files-found: error
+
+  compile-pal8-guest:
+    name: Cross-compile ss1-cnc-pal8.dll
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install mingw
+        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            gcc-mingw-w64-i686
+      - name: Build
+        run: |
+          i686-w64-mingw32-gcc -O2 -Wall -shared -o ss1-cnc-pal8.dll \
+            scripts/ss1-cnc-pal8-hook.c -static-libgcc
+          i686-w64-mingw32-gcc -O2 -Wall -s -mwindows -o ss1-cnc-pal8.exe \
+            scripts/ss1-cnc-pal8.c -static-libgcc
+          i686-w64-mingw32-size ss1-cnc-pal8.dll ss1-cnc-pal8.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ss1-cnc-pal8-guest
+          path: |
+            ss1-cnc-pal8.dll
+            ss1-cnc-pal8.exe
           if-no-files-found: error
 
   compile-fpga:
@@ -60,6 +96,10 @@ jobs:
           grep -q "12'd480" "$sv"
           grep -q "14'd2560" "$sv"
           grep -q "5'b10110" "$sv"
+          grep -v '^#' "$qsf" | grep -q 'MISTER_FB_PALETTE=1'
+          grep -q "32'h3020_0000" "$sv"
+          grep -q "5'b00011" "$sv"
+          grep -q "module pal8_fbctl" fpga/rtl/pal8_fbctl.v
           ! grep -qiE 'fb_line_reader|module[[:space:]]+mycore' fpga/WinEXE.qip fpga/WinEXE.sv fpga/rtl/*.v
           test ! -e fpga/rtl/fb_line_reader.v
           test ! -e fpga/rtl/mycore.v
@@ -69,6 +109,7 @@ jobs:
           test -f fpga/rtl/pll.qip
           test -f fpga/rtl/pll.v
           test -f fpga/rtl/vga640.v
+          test -f fpga/rtl/pal8_fbctl.v
           test -f fpga/WinEXE.qpf
           echo SANITY_OK
 

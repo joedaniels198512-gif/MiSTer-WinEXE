@@ -19,6 +19,9 @@
  *   SS1_DIRTY_PCT fallback to full memcpy if dirty coverage >= this % (default 60)
  *   SS1_XSYNC     1 = XSync after each frame (default 0; GetImage already waits)
  *   SS1_OSYNC     1 = O_SYNC /dev/mem (default 1). Non-RAM phys is uncached either way.
+ *
+ * Direct PAL8: if mailbox 0x30400000 magic=P8L8 and flags bit0, skip
+ * XShmGetImage / memcmp / BGRX copy (C&C writes 0x30200000 itself).
  */
 #define _GNU_SOURCE
 #include <X11/Xlib.h>
@@ -43,6 +46,9 @@
 #define FB_BPP    4
 #define FB_STRIDE (FB_W * FB_BPP)
 #define FB_SIZE   (FB_STRIDE * FB_H)
+#define SS1_MBOX_PHYS     0x30400000UL
+#define SS1_PAL8_MAGIC    0x50384C38u
+#define SS1_PAL8_FLAG_EN  1u
 #define PROFILE_EVERY 60
 #define DIRTY_MAX_TX  64
 #define DIRTY_MAX_TY  60
@@ -379,7 +385,9 @@ int main(int argc, char **argv)
 	XImage *im;
 	XShmSegmentInfo shm;
 	uint32_t *fb;
+	volatile uint32_t *mbox = NULL;
 	int memfd, use_shm = 0, use_fixes = 0, ev_base = 0, err_base = 0;
+	int pal8_idle = 0;
 	int do_xsync, osync, skip_unchanged, dirty;
 	int tile_w, tile_h, dirty_pct;
 	unsigned long frames = 0, ddr_writes = 0, ddr_skips = 0;
@@ -487,6 +495,11 @@ int main(int argc, char **argv)
 		perror("mmap 0x30000000");
 		return 1;
 	}
+	mbox = mmap(NULL, 4096, PROT_READ, MAP_SHARED, memfd, (off_t)SS1_MBOX_PHYS);
+	if (mbox == MAP_FAILED) {
+		perror("mmap 0x30400000 mailbox");
+		mbox = NULL;
+	}
 	if (skip_unchanged) {
 		prev = malloc(FB_SIZE);
 		if (!prev) {
@@ -512,6 +525,23 @@ int main(int argc, char **argv)
 	for (;;) {
 		XFixesCursorImage *cur = NULL;
 		uint64_t t0, t_frame0 = now_ns();
+
+		if (mbox && mbox[0] == SS1_PAL8_MAGIC && (mbox[1] & SS1_PAL8_FLAG_EN)) {
+			if (!pal8_idle) {
+				printf("pal8_idle: skip XShmGetImage/BGRX (presents=%u gen=%u)\n",
+				       mbox[3], mbox[2]);
+				fflush(stdout);
+				pal8_idle = 1;
+			}
+			usleep(100000);
+			continue;
+		}
+		if (pal8_idle) {
+			printf("pal8_idle: mailbox clear, resume BGRX presenter\n");
+			fflush(stdout);
+			pal8_idle = 0;
+			have_prev = 0;
+		}
 
 		if (use_shm) {
 			t0 = now_ns();
@@ -668,6 +698,8 @@ int main(int argc, char **argv)
 
 	free(prev);
 	munmap(fb, FB_SIZE);
+	if (mbox && mbox != MAP_FAILED)
+		munmap((void *)mbox, 4096);
 	close(memfd);
 	if (use_shm) {
 		XShmDetach(dpy, &shm);
