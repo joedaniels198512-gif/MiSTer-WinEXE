@@ -1,24 +1,33 @@
 /*
  * Copy the Xorg dummy root window into the WinEXE_Test FPGA framebuffer.
  *
- * Source: DISPLAY (default :0), 640x480, MIT-SHM GetImage.
- * Cursor: XFixes image composited into the SHM XImage (cached RAM), then
- *         one completed 640x480 BGRX memcpy into FPGA DDR. Do not blend
- *         the cursor into 0x30000000 after that copy (FPGA scans it live).
+ * Source: DISPLAY (default :0), 640x480, MIT-SHM GetImage (cursor-free).
+ * Cursor: XFixes image composited in cached RAM, then copied to FPGA DDR.
+ * Dummy GetImage does not include the X cursor. Skip-unchanged therefore
+ * compares the cursor-free desktop, not the composed frame. Pointer motion
+ * on a static desktop writes only the old/new cursor rectangles to DDR —
+ * not a full 640x480x32 copy. Do not blend the cursor into 0x30000000
+ * after that copy (FPGA scans it live).
  *
  * Does not open /dev/fb0. Cross-compiled ARMv7; do not build on the SuperStation.
  *
  * Env:
  *   SS1_HZ        presentation pace (default 60). HDMI/Xorg stay 60 Hz.
  *   SS1_FRAME_US  >0 extra usleep after work; 0 = SS1_HZ pace; <0 = uncapped
- *   SS1_SKIP_UNCHANGED  1 = skip uncached DDR memcpy when composed frame
- *                       matches previous cached copy (default 1)
- *   SS1_DIRTY     1 = write only coarse dirty spans (needs skip + prev)
+ *   SS1_SKIP_UNCHANGED  1 = skip uncached DDR memcpy when the cursor-free
+ *                       desktop matches the previous capture (default 1)
+ *   SS1_CURSOR_ONLY 1 = pointer-only DDR rects when desktop is unchanged
+ *                       (default 1). 0 = full-frame DDR on any cursor move.
+ *   SS1_DIRTY     1 = write only coarse dirty spans (needs skip + bg)
  *   SS1_TILE_W    dirty tile width in pixels (must divide 640; default 32)
  *   SS1_TILE_H    dirty tile height in pixels (must divide 480; default 32)
  *   SS1_DIRTY_PCT fallback to full memcpy if dirty coverage >= this % (default 60)
  *   SS1_XSYNC     1 = XSync after each frame (default 0; GetImage already waits)
  *   SS1_OSYNC     1 = O_SYNC /dev/mem (default 1). Non-RAM phys is uncached either way.
+ *
+ * Startup: always write one complete 640x480 BGRX frame to 0x30000000
+ * before skip-unchanged / cursor-only. HDMI can otherwise keep a stale
+ * or blank DDR buffer. After that write, optimized behaviour is unchanged.
  *
  * Direct PAL8: if mailbox 0x30400000 magic=P8L8 and flags bit0, skip
  * XShmGetImage / memcmp / BGRX copy (C&C writes 0x30200000 itself).
@@ -106,6 +115,79 @@ static void copy_rect(char *dst, const char *src, int x, int y, int w, int h)
 		size_t off = ((size_t)(y + row) * (size_t)FB_W + (size_t)x) * (size_t)FB_BPP;
 		memcpy(dst + off, src + off, (size_t)w * (size_t)FB_BPP);
 	}
+}
+
+static int clip_rect(int *x, int *y, int *w, int *h)
+{
+	if (*w <= 0 || *h <= 0)
+		return 0;
+	if (*x < 0) {
+		*w += *x;
+		*x = 0;
+	}
+	if (*y < 0) {
+		*h += *y;
+		*y = 0;
+	}
+	if (*x >= FB_W || *y >= FB_H)
+		return 0;
+	if (*x + *w > FB_W)
+		*w = FB_W - *x;
+	if (*y + *h > FB_H)
+		*h = FB_H - *y;
+	return *w > 0 && *h > 0;
+}
+
+static int cursor_geom(const XFixesCursorImage *cur, int *x, int *y, int *w, int *h)
+{
+	if (!cur || cur->width == 0 || cur->height == 0)
+		return 0;
+	*x = (int)cur->x - (int)cur->xhot;
+	*y = (int)cur->y - (int)cur->yhot;
+	*w = (int)cur->width;
+	*h = (int)cur->height;
+	return clip_rect(x, y, w, h);
+}
+
+/* Write one or two clipped rectangles to uncached DDR. Prefer a union when
+ * that copies fewer pixels than two separate rects (typical 1px mouse move).
+ * Far jumps keep two small rects so a diagonal drag is not a full frame. */
+static size_t write_dirty_rects(char *fb, const char *src,
+				int ax, int ay, int aw, int ah, int a_ok,
+				int bx, int by, int bw, int bh, int b_ok)
+{
+	if (a_ok && b_ok) {
+		int x0 = ax < bx ? ax : bx;
+		int y0 = ay < by ? ay : by;
+		int x1 = (ax + aw) > (bx + bw) ? (ax + aw) : (bx + bw);
+		int y1 = (ay + ah) > (by + bh) ? (ay + ah) : (by + bh);
+		int uw = x1 - x0, uh = y1 - y0;
+		int ua = uw * uh;
+		int sa = aw * ah + bw * bh;
+
+		if (ua > 0 && ua <= sa) {
+			copy_rect(fb, src, x0, y0, uw, uh);
+			return (size_t)ua * (size_t)FB_BPP;
+		}
+		copy_rect(fb, src, ax, ay, aw, ah);
+		copy_rect(fb, src, bx, by, bw, bh);
+		return (size_t)sa * (size_t)FB_BPP;
+	}
+	if (a_ok) {
+		copy_rect(fb, src, ax, ay, aw, ah);
+		return (size_t)aw * (size_t)ah * (size_t)FB_BPP;
+	}
+	if (b_ok) {
+		copy_rect(fb, src, bx, by, bw, bh);
+		return (size_t)bw * (size_t)bh * (size_t)FB_BPP;
+	}
+	return 0;
+}
+
+static int cmp_u32(const void *a, const void *b)
+{
+	uint32_t x = *(const uint32_t *)a, y = *(const uint32_t *)b;
+	return (x > y) - (x < y);
 }
 
 /*
@@ -388,18 +470,27 @@ int main(int argc, char **argv)
 	volatile uint32_t *mbox = NULL;
 	int memfd, use_shm = 0, use_fixes = 0, ev_base = 0, err_base = 0;
 	int pal8_idle = 0;
-	int do_xsync, osync, skip_unchanged, dirty;
+	int do_xsync, osync, skip_unchanged, dirty, cursor_only;
 	int tile_w, tile_h, dirty_pct;
-	unsigned long frames = 0, ddr_writes = 0, ddr_skips = 0;
-	unsigned long acc_writes = 0, acc_skips = 0;
-	unsigned long acc_ddr_bytes = 0, acc_spans = 0, acc_dirty_pct = 0, acc_fallback = 0;
-	int once = 0, have_prev = 0;
+	unsigned long frames = 0;
+	unsigned long acc_full = 0, acc_cur = 0, acc_skips = 0;
+	unsigned long acc_ddr_bytes = 0, acc_over = 0;
+	int once = 0, have_bg = 0, have_cur = 0, last_vis = 0;
+	int force_first_full = 1;
+	int last_x = 0, last_y = 0, last_w = 0, last_h = 0;
+	int last_xhot = 0, last_yhot = 0;
+	unsigned long last_serial = 0;
 	long frame_us, hz;
 	uint64_t period_ns;
-	uint32_t *prev = NULL;
-	uint64_t acc_shm = 0, acc_ddr = 0, acc_cur_get = 0, acc_cur_blit = 0;
+	uint32_t *bg = NULL;
+	uint32_t work_us[PROFILE_EVERY];
+	unsigned work_n = 0;
+	uint64_t acc_shm = 0, acc_ddr_full = 0, acc_ddr_cur = 0;
+	uint64_t acc_cur_get = 0, acc_cur_blit = 0;
 	uint64_t acc_cmp = 0, acc_xsync = 0, acc_sleep = 0, acc_total = 0;
 	uint64_t t_loop0, deadline = 0;
+	int log_cx = 0, log_cy = 0, log_cw = 0, log_ch = 0, log_cvis = 0;
+	unsigned long log_cserial = 0;
 
 	if (argc > 1 && !strcmp(argv[1], "once"))
 		once = 1;
@@ -412,6 +503,7 @@ int main(int argc, char **argv)
 		hz = 120;
 	period_ns = 1000000000ull / (uint64_t)hz;
 	skip_unchanged = (int)env_long("SS1_SKIP_UNCHANGED", 1);
+	cursor_only = (int)env_long("SS1_CURSOR_ONLY", 1);
 	dirty = (int)env_long("SS1_DIRTY", 0);
 	tile_w = (int)env_long("SS1_TILE_W", 32);
 	tile_h = (int)env_long("SS1_TILE_H", 32);
@@ -501,19 +593,20 @@ int main(int argc, char **argv)
 		mbox = NULL;
 	}
 	if (skip_unchanged) {
-		prev = malloc(FB_SIZE);
-		if (!prev) {
-			fprintf(stderr, "malloc prev frame failed; skip-unchanged disabled\n");
+		bg = malloc(FB_SIZE);
+		if (!bg) {
+			fprintf(stderr, "malloc bg frame failed; skip-unchanged disabled\n");
 			skip_unchanged = 0;
+			cursor_only = 0;
 		}
 	}
 	if (dirty && !skip_unchanged)
 		dirty = 0;
-	printf("WinEXE X11 presenter DISPLAY=%s shm=%d fixes=%d depth=%d bpp_guess=%d -> 0x%lx hz=%ld period_ns=%llu frame_us=%ld skip=%d dirty=%d tile=%dx%d pct=%d xsync=%d osync=%d\n",
+	printf("WinEXE X11 presenter DISPLAY=%s shm=%d fixes=%d depth=%d bpp_guess=%d -> 0x%lx hz=%ld period_ns=%llu frame_us=%ld skip=%d cursor_only=%d dirty=%d tile=%dx%d pct=%d xsync=%d osync=%d\n",
 	       display_name, use_shm, use_fixes,
 	       DefaultDepth(dpy, DefaultScreen(dpy)),
 	       im ? im->bits_per_pixel : 0, FB_PHYS, hz,
-	       (unsigned long long)period_ns, frame_us, skip_unchanged,
+	       (unsigned long long)period_ns, frame_us, skip_unchanged, cursor_only,
 	       dirty, tile_w, tile_h, dirty_pct, do_xsync, osync);
 	if (im)
 		printf("ximage bpp=%d bpl=%d byte_order=%d red=%lx green=%lx blue=%lx\n",
@@ -524,7 +617,11 @@ int main(int argc, char **argv)
 	t_loop0 = now_ns();
 	for (;;) {
 		XFixesCursorImage *cur = NULL;
-		uint64_t t0, t_frame0 = now_ns();
+		uint64_t t0, t_frame0 = now_ns(), work_ns;
+		int desktop_changed, cursor_changed, vis;
+		int nx = 0, ny = 0, nw = 0, nh = 0, n_ok = 0;
+		int ox = 0, oy = 0, ow = 0, oh = 0, o_ok = 0;
+		int direct;
 
 		if (mbox && mbox[0] == SS1_PAL8_MAGIC && (mbox[1] & SS1_PAL8_FLAG_EN)) {
 			if (!pal8_idle) {
@@ -540,7 +637,10 @@ int main(int argc, char **argv)
 			printf("pal8_idle: mailbox clear, resume BGRX presenter\n");
 			fflush(stdout);
 			pal8_idle = 0;
-			have_prev = 0;
+			have_bg = 0;
+			have_cur = 0;
+			last_vis = 0;
+			force_first_full = 1;
 		}
 
 		if (use_shm) {
@@ -550,62 +650,143 @@ int main(int argc, char **argv)
 				return 1;
 			}
 			acc_shm += now_ns() - t0;
+
+			direct = ximage_direct_packed(im);
+			t0 = now_ns();
+			desktop_changed = !skip_unchanged || !bg || !have_bg || !direct
+				|| frame_changed(im->data, (const char *)bg);
+			acc_cmp += now_ns() - t0;
+
+			vis = 0;
 			if (use_fixes) {
 				t0 = now_ns();
 				cur = XFixesGetCursorImage(dpy);
 				acc_cur_get += now_ns() - t0;
 				if (cur) {
+					vis = 1;
+					n_ok = cursor_geom(cur, &nx, &ny, &nw, &nh);
 					if (frames == 0)
-						printf("cursor %dx%d hot=%d,%d pos=%d,%d\n",
+						printf("cursor %dx%d hot=%d,%d pos=%d,%d vis=%d serial=%lu\n",
 						       (int)cur->width, (int)cur->height,
 						       (int)cur->xhot, (int)cur->yhot,
-						       (int)cur->x, (int)cur->y);
-					t0 = now_ns();
-					blit_cursor(im, cur);
-					acc_cur_blit += now_ns() - t0;
-					XFree(cur);
-					cur = NULL;
+						       (int)cur->x, (int)cur->y, vis,
+						       (unsigned long)cur->cursor_serial);
+					log_cx = (int)cur->x;
+					log_cy = (int)cur->y;
+					log_cw = (int)cur->width;
+					log_ch = (int)cur->height;
+					log_cvis = vis;
+					log_cserial = (unsigned long)cur->cursor_serial;
 				}
 			}
-			t0 = now_ns();
-			if (skip_unchanged && prev && ximage_direct_packed(im)) {
-				int changed = !have_prev || frame_changed(im->data, (const char *)prev);
-				acc_cmp += now_ns() - t0;
-				if (changed) {
-					unsigned long span_n = 1, d_pct = 100, fb_full = 1;
-					size_t wrote;
+			if (have_cur && last_vis) {
+				ox = last_x - last_xhot;
+				oy = last_y - last_yhot;
+				ow = last_w;
+				oh = last_h;
+				o_ok = clip_rect(&ox, &oy, &ow, &oh);
+			}
+			cursor_changed = !have_cur
+				|| vis != last_vis
+				|| (vis && cur && (cur->x != last_x || cur->y != last_y
+					    || (int)cur->xhot != last_xhot
+					    || (int)cur->yhot != last_yhot
+					    || (int)cur->width != last_w
+					    || (int)cur->height != last_h
+					    || (unsigned long)cur->cursor_serial != last_serial));
 
-					t0 = now_ns();
-					if (dirty && have_prev) {
-						wrote = dirty_present((char *)fb, im->data, (char *)prev,
-								      tile_w, tile_h, dirty_pct,
-								      &span_n, &d_pct, &fb_full);
-					} else {
-						memcpy(fb, im->data, FB_SIZE);
-						wrote = FB_SIZE;
-						memcpy(prev, im->data, FB_SIZE);
-					}
-					acc_ddr += now_ns() - t0;
-					have_prev = 1;
-					ddr_writes++;
-					acc_writes++;
-					acc_ddr_bytes += wrote;
-					acc_spans += span_n;
-					acc_dirty_pct += d_pct;
-					acc_fallback += fb_full;
-				} else {
-					ddr_skips++;
-					acc_skips++;
-				}
+			if (!force_first_full && skip_unchanged && have_bg && !desktop_changed && !cursor_changed) {
+				acc_skips++;
+			} else if (!force_first_full && cursor_only && have_bg && direct && !desktop_changed) {
+				size_t wrote;
+				t0 = now_ns();
+				if (vis && cur)
+					blit_cursor(im, cur);
+				acc_cur_blit += now_ns() - t0;
+				t0 = now_ns();
+				wrote = write_dirty_rects((char *)fb, im->data,
+							  ox, oy, ow, oh, o_ok,
+							  nx, ny, nw, nh, n_ok && vis);
+				acc_ddr_cur += now_ns() - t0;
+				acc_ddr_bytes += wrote;
+				acc_cur++;
 			} else {
-				blit_image(fb, im);
-				acc_ddr += now_ns() - t0;
-				ddr_writes++;
-				acc_writes++;
-				acc_ddr_bytes += FB_SIZE;
-				acc_spans++;
-				acc_dirty_pct += 100;
-				acc_fallback++;
+				unsigned long span_n = 1, d_pct = 100, fb_full = 1;
+				size_t wrote;
+				int used_dirty = 0;
+
+				if (!force_first_full && dirty && have_bg && direct && desktop_changed) {
+					t0 = now_ns();
+					wrote = dirty_present((char *)fb, im->data, (char *)bg,
+							      tile_w, tile_h, dirty_pct,
+							      &span_n, &d_pct, &fb_full);
+					acc_ddr_full += now_ns() - t0;
+					used_dirty = 1;
+					if (bg && direct && !fb_full) {
+						/* bg already patched in dirty_present */
+					} else if (bg && direct) {
+						/* fallback copied full clean desktop into bg */
+					}
+				} else if (bg && direct) {
+					memcpy(bg, im->data, FB_SIZE);
+				}
+
+				t0 = now_ns();
+				if (vis && cur)
+					blit_cursor(im, cur);
+				acc_cur_blit += now_ns() - t0;
+
+				if (used_dirty) {
+					t0 = now_ns();
+					if (fb_full)
+						wrote += write_dirty_rects((char *)fb, im->data,
+									   0, 0, 0, 0, 0,
+									   nx, ny, nw, nh, n_ok && vis);
+					else
+						wrote += write_dirty_rects((char *)fb, im->data,
+									   ox, oy, ow, oh, o_ok,
+									   nx, ny, nw, nh, n_ok && vis);
+					acc_ddr_cur += now_ns() - t0;
+					acc_ddr_bytes += wrote;
+					acc_full++;
+				} else if (direct) {
+					t0 = now_ns();
+					memcpy(fb, im->data, FB_SIZE);
+					acc_ddr_full += now_ns() - t0;
+					acc_ddr_bytes += FB_SIZE;
+					acc_full++;
+				} else {
+					t0 = now_ns();
+					blit_image(fb, im);
+					acc_ddr_full += now_ns() - t0;
+					acc_ddr_bytes += FB_SIZE;
+					acc_full++;
+				}
+				have_bg = 1;
+				if (force_first_full) {
+					printf("forced_first_full: wrote %dx%d BGRX %d bytes to 0x%lx; skip=%d cursor_only=%d resume\n",
+					       FB_W, FB_H, (int)FB_SIZE, FB_PHYS,
+					       skip_unchanged, cursor_only);
+					fflush(stdout);
+					force_first_full = 0;
+				}
+			}
+
+			if (cur) {
+				last_x = (int)cur->x;
+				last_y = (int)cur->y;
+				last_xhot = (int)cur->xhot;
+				last_yhot = (int)cur->yhot;
+				last_w = (int)cur->width;
+				last_h = (int)cur->height;
+				last_serial = (unsigned long)cur->cursor_serial;
+				last_vis = vis;
+				have_cur = 1;
+				XFree(cur);
+				cur = NULL;
+			} else {
+				last_vis = 0;
+				have_cur = 1;
 			}
 		} else {
 			XImage *tmp;
@@ -633,9 +814,16 @@ int main(int argc, char **argv)
 			}
 			t0 = now_ns();
 			blit_image(fb, tmp);
-			acc_ddr += now_ns() - t0;
-			ddr_writes++;
-			acc_writes++;
+			acc_ddr_full += now_ns() - t0;
+			acc_full++;
+			acc_ddr_bytes += FB_SIZE;
+			if (force_first_full) {
+				printf("forced_first_full: wrote %dx%d BGRX %d bytes to 0x%lx; skip=%d cursor_only=%d resume\n",
+				       FB_W, FB_H, (int)FB_SIZE, FB_PHYS,
+				       skip_unchanged, cursor_only);
+				fflush(stdout);
+				force_first_full = 0;
+			}
 			XDestroyImage(tmp);
 		}
 		if (do_xsync) {
@@ -644,33 +832,48 @@ int main(int argc, char **argv)
 			acc_xsync += now_ns() - t0;
 		}
 		frames++;
-		acc_total += now_ns() - t_frame0;
+		work_ns = now_ns() - t_frame0;
+		acc_total += work_ns;
+		if (work_ns > 16666666ull)
+			acc_over++;
+		if (work_n < PROFILE_EVERY)
+			work_us[work_n++] = (uint32_t)(work_ns / 1000ull);
 		if (frames == 1 || (frames % PROFILE_EVERY) == 0) {
 			double n = (double)(frames % PROFILE_EVERY == 0 ? PROFILE_EVERY : frames);
 			double wall_ms = (double)(now_ns() - t_loop0) / 1e6;
-			double fps = (wall_ms > 0.0) ? (n * 1000.0 / wall_ms) : 0.0;
-			printf("frames=%lu shm=%.2f ddr=%.2f cmp=%.2f cur_get=%.2f cur_blit=%.2f xsync=%.2f sleep=%.2f work=%.2f fps=%.1f ddr_hz=%.1f skip=%lu write=%lu dirty_pct=%.0f spans=%.1f ddr_kBps=%.0f fallback=%lu (ms/frame, last %g)\n",
-			       frames,
+			double loop_hz = (wall_ms > 0.0) ? (n * 1000.0 / wall_ms) : 0.0;
+			unsigned long vis_n = acc_full + acc_cur;
+			double p50 = 0, p95 = 0, pmax = 0;
+			if (work_n) {
+				qsort(work_us, work_n, sizeof work_us[0], cmp_u32);
+				p50 = work_us[work_n / 2] / 1000.0;
+				p95 = work_us[(work_n * 95u) / 100u < work_n
+					      ? (work_n * 95u) / 100u : work_n - 1] / 1000.0;
+				pmax = work_us[work_n - 1] / 1000.0;
+			}
+			printf("frames=%lu loop_hz=%.1f vis_hz=%.1f full_hz=%.1f cur_hz=%.1f skip=%lu full=%lu cur=%lu bytes/s=%.0f shm=%.2f cur_get=%.2f cur_blit=%.2f ddr_full=%.2f ddr_cur=%.2f cmp=%.2f work_avg=%.2f work_p50=%.2f work_p95=%.2f work_max=%.2f over16.7=%.1f%% sleep=%.2f cursor=%d,%d %dx%d vis=%d serial=%lu (ms, last %g)\n",
+			       frames, loop_hz,
+			       wall_ms > 0.0 ? (vis_n * 1000.0 / wall_ms) : 0.0,
+			       wall_ms > 0.0 ? (acc_full * 1000.0 / wall_ms) : 0.0,
+			       wall_ms > 0.0 ? (acc_cur * 1000.0 / wall_ms) : 0.0,
+			       acc_skips, acc_full, acc_cur,
+			       wall_ms > 0.0 ? ((double)acc_ddr_bytes) * (1000.0 / wall_ms) : 0.0,
 			       (double)acc_shm / n / 1e6,
-			       (double)acc_ddr / n / 1e6,
-			       (double)acc_cmp / n / 1e6,
 			       (double)acc_cur_get / n / 1e6,
 			       (double)acc_cur_blit / n / 1e6,
-			       (double)acc_xsync / n / 1e6,
-			       (double)acc_sleep / n / 1e6,
+			       (double)acc_ddr_full / n / 1e6,
+			       (double)acc_ddr_cur / n / 1e6,
+			       (double)acc_cmp / n / 1e6,
 			       (double)acc_total / n / 1e6,
-			       fps,
-			       wall_ms > 0.0 ? (acc_writes * 1000.0 / wall_ms) : 0.0,
-			       acc_skips, acc_writes,
-			       acc_writes ? (double)acc_dirty_pct / (double)acc_writes : 0.0,
-			       acc_writes ? (double)acc_spans / (double)acc_writes : 0.0,
-			       wall_ms > 0.0 ? ((double)acc_ddr_bytes / 1024.0) * (1000.0 / wall_ms) : 0.0,
-			       acc_fallback, n);
+			       p50, p95, pmax,
+			       100.0 * (double)acc_over / n,
+			       (double)acc_sleep / n / 1e6,
+			       log_cx, log_cy, log_cw, log_ch, log_cvis, log_cserial, n);
 			fflush(stdout);
-			acc_shm = acc_ddr = acc_cur_get = acc_cur_blit = 0;
+			acc_shm = acc_ddr_full = acc_ddr_cur = acc_cur_get = acc_cur_blit = 0;
 			acc_cmp = acc_xsync = acc_sleep = acc_total = 0;
-			acc_writes = acc_skips = 0;
-			acc_ddr_bytes = acc_spans = acc_dirty_pct = acc_fallback = 0;
+			acc_full = acc_cur = acc_skips = acc_ddr_bytes = acc_over = 0;
+			work_n = 0;
 			t_loop0 = now_ns();
 		}
 		if (once)
@@ -696,7 +899,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	free(prev);
+	free(bg);
 	munmap(fb, FB_SIZE);
 	if (mbox && mbox != MAP_FAILED)
 		munmap((void *)mbox, 4096);

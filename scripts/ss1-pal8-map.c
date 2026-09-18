@@ -113,12 +113,10 @@ static void *stats_thread(void *arg)
 
 static void pal8_off(void)
 {
-	volatile uint32_t *mb;
 	g_run = 0;
-	if (g_mbox) {
-		mb = g_mbox;
-		mb[SS1_MBOX_OFF_FLAGS / 4] = 0;
-	}
+	/* Shared physical mailbox: do not clear pal8_en here. Helpers that
+	 * inherit LD_PRELOAD would otherwise clobber C&C's enable bit.
+	 * ss1-cnc-pal8.sh stop clears flags on profile teardown. */
 	unlink(SS1_PAL8_ACTIVE_PATH);
 }
 
@@ -165,10 +163,12 @@ static void pal8_map_init(void)
 
 	{
 		volatile uint32_t *mb = g_mbox;
-		mb[SS1_MBOX_OFF_MAGIC / 4] = SS1_PAL8_MAGIC;
-		mb[SS1_MBOX_OFF_FLAGS / 4] = 0; /* BGRX until hook succeeds */
-		mb[SS1_MBOX_OFF_PAL_GEN / 4] = 0;
-		mb[SS1_MBOX_OFF_PRESENTS / 4] = 0;
+		if (mb[SS1_MBOX_OFF_MAGIC / 4] != SS1_PAL8_MAGIC) {
+			mb[SS1_MBOX_OFF_MAGIC / 4] = SS1_PAL8_MAGIC;
+			mb[SS1_MBOX_OFF_FLAGS / 4] = 0; /* BGRX until hook succeeds */
+			mb[SS1_MBOX_OFF_PAL_GEN / 4] = 0;
+			mb[SS1_MBOX_OFF_PRESENTS / 4] = 0;
+		}
 	}
 	memset((char *)g_pal8 + (SS1_PAL8_STATS_PHYS - SS1_PAL8_PHYS), 0,
 	       SS1_PAL8_STATS_SIZE);

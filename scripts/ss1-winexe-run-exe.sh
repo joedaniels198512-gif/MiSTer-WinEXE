@@ -15,6 +15,18 @@ case "$BASE" in
   notepad.exe)
     exec "$LAUNCH" launch notepad
     ;;
+  winmine.exe)
+    exec "$LAUNCH" launch minesweeper
+    ;;
+  sol.exe)
+    exec "$LAUNCH" launch solitaire
+    ;;
+  freecell.exe)
+    exec "$LAUNCH" launch freecell
+    ;;
+  mshearts.exe|hearts.exe)
+    exec "$LAUNCH" launch hearts
+    ;;
 esac
 
 # Ad-hoc EXE: reuse the paint-class 60 Hz runtime without a dedicated INI.

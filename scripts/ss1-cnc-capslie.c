@@ -1,7 +1,7 @@
 /*
- * One-shot in-memory debugger stub: after C&C95's primary GetCaps returns,
- * clear DDSCAPS_SYSTEMMEMORY and set DDSCAPS_VIDEOMEMORY in the local
- * DDSCAPS. Does not modify C&C95.EXE on disk.
+ * One-shot in-memory debugger stub for stock C&C95.EXE (disk unchanged):
+ *  - after primary/back-buffer GetCaps: clear SYSTEMMEMORY, set VIDEOMEMORY
+ *  - at Get_Vert_Blank (RVA 0xDD550): xor eax,eax; ret  (skip IN 0x3DA)
  *
  * i686-w64-mingw32-gcc -O2 -Wall -s -mwindows -o ss1-cnc-capslie.exe \
  *     ss1-cnc-capslie.c -static-libgcc -lpsapi
@@ -159,6 +159,10 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
     static const unsigned char sig2[] = {
         0xF6, 0x45, 0x57, 0x08, 0x74, 0x39
     };
+    /* Get_Vert_Blank: push ebx,ecx,edx,esi,edi; mov eax, 0x005A2E58 */
+    static const unsigned char sig_vb[] = {
+        0x53, 0x51, 0x52, 0x56, 0x57, 0xB8, 0x58, 0x2E, 0x5A, 0x00
+    };
     (void)inst;
     (void)prev;
     (void)cmd;
@@ -311,7 +315,21 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmd, int show)
          */
     }
 
-    flog("caps lie armed; leaving C&C running");
+    /* Get_Vert_Blank RVA 0xDD550: majority-vote IN 0x3DA. One caller caches
+     * the boolean. Immediate EAX=0 is the skip experiment (no port I/O). */
+    if (read_ok(hp, base + 0xDD550, sig_vb, sizeof sig_vb)) {
+        static const unsigned char skip_vb[] = {
+            0x31, 0xC0, 0xC3, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90
+        };
+        if (write_all(hp, base + 0xDD550, skip_vb, sizeof skip_vb))
+            flog("vblank skip planted RVA 0xDD550 xor eax,eax; ret");
+        else
+            flog("vblank skip write failed");
+    } else {
+        flog("vblank sig mismatch at 0x%lx", (unsigned long)(base + 0xDD550));
+    }
+
+    flog("caps lie + vblank skip armed; leaving C&C running");
     CloseHandle(hp);
     /* Stay alive briefly so logs flush; C&C does not depend on us. */
     Sleep(500);

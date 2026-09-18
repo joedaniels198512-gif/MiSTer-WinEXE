@@ -27,7 +27,9 @@ is_wine_comm() {
   case "$1" in
     wineserver|wine|wine-preloader|start.exe|explorer.exe| \
     winamp.exe|Winamp.exe|mspaint.exe|notepad.exe|NOTEPAD.EXE| \
-    wmplayer.exe|WMPLAYER.EXE|wmplayer.ex| \
+    winmine.exe|sol.exe|freecell.exe|mshearts.exe| \
+    civ2.exe|CIV2.EXE| \
+    wmplayer.exe|WMPLAYER.EXE|wmplayer.ex|mspmspsv.exe| \
     ss1-winexe-wmpw|ss1-winexe-dsho|ss1-winexe-cocr| \
     SIMCITY.EXE|simcity.exe|SIMCITY.exe| \
     services.exe|rpcss.exe|winedevice.exe|plugplay.exe| \

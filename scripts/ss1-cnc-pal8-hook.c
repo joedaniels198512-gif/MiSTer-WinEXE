@@ -71,6 +71,15 @@ static uint64_t qpc_ns(void)
 	return (uint64_t)t.QuadPart * 1000000000ull / (uint64_t)freq.QuadPart;
 }
 
+static int in_list(const uint32_t *a, int na, uint32_t v)
+{
+	int i;
+	for (i = 0; i < na; i++)
+		if (a[i] == v)
+			return 1;
+	return 0;
+}
+
 static int collect_calls(const uint8_t *fn, size_t maxn,
                          uint32_t *out, int max_out, uint32_t lo, uint32_t hi)
 {
@@ -82,20 +91,75 @@ static int collect_calls(const uint8_t *fn, size_t maxn,
 			uint32_t tgt;
 			memcpy(&rel, fn + i + 1, 4);
 			tgt = (uint32_t)(fn + i + 5) + (uint32_t)rel;
-			if (tgt >= lo && tgt < hi)
+			if (tgt >= lo && tgt < hi && !in_list(out, n, tgt))
 				out[n++] = tgt;
 		}
 	}
 	return n;
 }
 
-static int in_list(const uint32_t *a, int na, uint32_t v)
+/* Wine ddraw re-exports wined3d through FF 25 / E9 thunks. Those are
+ * not ddraw_surface_update_frontbuffer; planting on them splits FF 25. */
+static uint32_t follow_thunk(uint32_t p)
 {
-	int i;
-	for (i = 0; i < na; i++)
-		if (a[i] == v)
-			return 1;
+	int n;
+	for (n = 0; n < 6; n++) {
+		const uint8_t *b = (const uint8_t *)(uintptr_t)p;
+		if (b[0] == 0xFF && b[1] == 0x25) {
+			uint32_t slot, tgt;
+			memcpy(&slot, b + 2, 4);
+			memcpy(&tgt, (void *)(uintptr_t)slot, 4);
+			p = tgt;
+			continue;
+		}
+		if (b[0] == 0xE9) {
+			int32_t rel;
+			memcpy(&rel, b + 1, 4);
+			p = (uint32_t)(p + 5u + (uint32_t)rel);
+			continue;
+		}
+		break;
+	}
+	return p;
+}
+
+static int is_iat_thunk(uint32_t p)
+{
+	const uint8_t *b = (const uint8_t *)(uintptr_t)p;
+	return b[0] == 0xFF && b[1] == 0x25;
+}
+
+static size_t approx_fn_size(uint32_t p)
+{
+	const uint8_t *s = (const uint8_t *)(uintptr_t)p;
+	size_t i;
+	for (i = 8; i < 4096; i++) {
+		if (s[i] == 0x55 && s[i + 1] == 0x89 && s[i + 2] == 0xE5)
+			return i;
+		if (s[i] == 0x55 && s[i + 1] == 0x8B && s[i + 2] == 0xEC)
+			return i;
+	}
 	return 0;
+}
+
+static uint32_t pick_best(const uint32_t *cands, int n,
+                          uint32_t lo, uint32_t hi)
+{
+	uint32_t best = 0;
+	size_t bestsz = 0;
+	int i;
+	for (i = 0; i < n; i++) {
+		uint32_t p = follow_thunk(cands[i]);
+		size_t sz;
+		if (p < lo || p >= hi || is_iat_thunk(p))
+			continue;
+		sz = approx_fn_size(p);
+		if (sz > bestsz) {
+			bestsz = sz;
+			best = p;
+		}
+	}
+	return best;
 }
 
 static uint32_t find_update_frontbuffer(void)
@@ -104,9 +168,10 @@ static uint32_t find_update_frontbuffer(void)
 	void **vtbl;
 	uint32_t ddraw_lo = 0, ddraw_hi = 0;
 	MEMORY_BASIC_INFORMATION mbi;
-	uint32_t blt_c[32], flip_c[32], pal_c[32];
-	int nb, nf, np, i;
+	uint32_t blt_c[64], flip_c[64], pal_c[64], inter[64];
+	int nb, nf, np, i, ni = 0;
 	HMODULE ddraw;
+	uint32_t best;
 
 	prim = *(IDirectDrawSurface **)(uintptr_t)0x541AEC;
 	if (!prim)
@@ -132,20 +197,24 @@ static uint32_t find_update_frontbuffer(void)
 		ddraw_hi = p;
 	}
 
-	nb = collect_calls((const uint8_t *)vtbl[VT_BLT], 2048, blt_c, 32, ddraw_lo, ddraw_hi);
-	nf = collect_calls((const uint8_t *)vtbl[VT_FLIP], 1024, flip_c, 32, ddraw_lo, ddraw_hi);
-	np = collect_calls((const uint8_t *)vtbl[VT_SETPALETTE], 1024, pal_c, 32, ddraw_lo, ddraw_hi);
+	nb = collect_calls((const uint8_t *)vtbl[VT_BLT], 8192, blt_c, 64, ddraw_lo, ddraw_hi);
+	nf = collect_calls((const uint8_t *)vtbl[VT_FLIP], 4096, flip_c, 64, ddraw_lo, ddraw_hi);
+	np = collect_calls((const uint8_t *)vtbl[VT_SETPALETTE], 4096, pal_c, 64, ddraw_lo, ddraw_hi);
 
-	for (i = 0; i < nb; i++) {
+	for (i = 0; i < nb && ni < 64; i++) {
 		if (in_list(flip_c, nf, blt_c[i]) && in_list(pal_c, np, blt_c[i]))
-			return blt_c[i];
+			inter[ni++] = blt_c[i];
 	}
+	best = pick_best(inter, ni, ddraw_lo, ddraw_hi);
+	if (best)
+		return best;
 	/* Blt + SetPalette is enough if Flip is unused. */
-	for (i = 0; i < nb; i++) {
+	ni = 0;
+	for (i = 0; i < nb && ni < 64; i++) {
 		if (in_list(pal_c, np, blt_c[i]))
-			return blt_c[i];
+			inter[ni++] = blt_c[i];
 	}
-	return 0;
+	return pick_best(inter, ni, ddraw_lo, ddraw_hi);
 }
 
 static size_t steal_len(const uint8_t *p)
@@ -257,6 +326,29 @@ static int eligible(IDirectDrawSurface *iface)
 	return 1;
 }
 
+static uint8_t g_jmp[16];
+static volatile LONG g_reent;
+
+/* Unpatch, call the real cdecl, repatch. Avoids a trampoline that Box86
+ * dynarec may execute from a stale block or a split FF 25. */
+static HRESULT call_orig(void *surface, const RECT *rect, BOOL read, unsigned swap)
+{
+	DWORD old = 0;
+	HRESULT hr;
+	if (!g_site || !g_stolen_n)
+		return DD_OK;
+	VirtualProtect(g_site, g_stolen_n, PAGE_EXECUTE_READWRITE, &old);
+	memcpy(g_site, g_stolen, g_stolen_n);
+	VirtualProtect(g_site, g_stolen_n, old, &old);
+	FlushInstructionCache(GetCurrentProcess(), g_site, g_stolen_n);
+	hr = ((update_fb_fn)g_site)(surface, rect, read, swap);
+	VirtualProtect(g_site, g_stolen_n, PAGE_EXECUTE_READWRITE, &old);
+	memcpy(g_site, g_jmp, g_stolen_n);
+	VirtualProtect(g_site, g_stolen_n, old, &old);
+	FlushInstructionCache(GetCurrentProcess(), g_site, g_stolen_n);
+	return hr;
+}
+
 static HRESULT __cdecl hook_update_fb(void *surface, const RECT *rect,
                                       BOOL read, unsigned swap)
 {
@@ -266,27 +358,49 @@ static HRESULT __cdecl hook_update_fb(void *surface, const RECT *rect,
 	HRESULT (__stdcall *Unlock)(IDirectDrawSurface *, LPVOID);
 	volatile uint32_t *mb;
 	uint64_t t0, dt;
+	HRESULT hr;
+	static unsigned seen;
 
-	if (read || !surface || !g_orig)
-		return g_orig(surface, rect, read, swap);
+	if (InterlockedIncrement(&g_reent) > 1) {
+		InterlockedDecrement(&g_reent);
+		return call_orig(surface, rect, read, swap);
+	}
+
+	if (read || !surface) {
+		hr = call_orig(surface, rect, read, swap);
+		InterlockedDecrement(&g_reent);
+		return hr;
+	}
 
 	mb = (volatile uint32_t *)(uintptr_t)SS1_MBOX_PHYS;
-	if (mb[SS1_MBOX_OFF_MAGIC / 4] != SS1_PAL8_MAGIC)
-		return g_orig(surface, rect, read, swap);
+	if (mb[SS1_MBOX_OFF_MAGIC / 4] != SS1_PAL8_MAGIC) {
+		hr = call_orig(surface, rect, read, swap);
+		InterlockedDecrement(&g_reent);
+		return hr;
+	}
 
 	iface = (IDirectDrawSurface *)((char *)surface + DDS1_OFF);
-	if (!eligible(iface))
-		return g_orig(surface, rect, read, swap);
+	if (!eligible(iface)) {
+		if (seen < 8) {
+			flog("ineligible present read=%d", (int)read);
+			seen++;
+		}
+		hr = call_orig(surface, rect, read, swap);
+		InterlockedDecrement(&g_reent);
+		return hr;
+	}
 
 	memset(&lock, 0, sizeof lock);
 	lock.dwSize = sizeof lock;
 	Lock = ((void ***)iface)[0][VT_LOCK];
 	Unlock = ((void ***)iface)[0][VT_UNLOCK];
-	if (Lock(iface, NULL, &lock, DDLOCK_WAIT | DDLOCK_READONLY, NULL) != DD_OK)
-		return g_orig(surface, rect, read, swap);
-	if (!lock.lpSurface) {
-		Unlock(iface, NULL);
-		return g_orig(surface, rect, read, swap);
+	if (Lock(iface, NULL, &lock, DDLOCK_WAIT | DDLOCK_READONLY, NULL) != DD_OK ||
+	    !lock.lpSurface) {
+		if (lock.lpSurface)
+			Unlock(iface, NULL);
+		hr = call_orig(surface, rect, read, swap);
+		InterlockedDecrement(&g_reent);
+		return hr;
 	}
 
 	t0 = qpc_ns();
@@ -297,6 +411,12 @@ static HRESULT __cdecl hook_update_fb(void *surface, const RECT *rect,
 	maybe_palette(iface);
 	mb[SS1_MBOX_OFF_FLAGS / 4] = SS1_PAL8_FLAG_EN;
 	note_copy(dt);
+	if (seen < 4) {
+		flog("pal8 copy ns=%lu", (unsigned long)dt);
+		seen++;
+	}
+	InterlockedDecrement(&g_reent);
+	/* Qualifying P8 present: skip GDI/X. */
 	return DD_OK;
 }
 
@@ -314,19 +434,14 @@ static int plant(uint32_t site)
 	g_stolen_n = n;
 	memcpy(g_stolen, g_site, n);
 
-	g_tramp = VirtualAlloc(NULL, 64, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-	if (!g_tramp)
-		return 0;
-	memcpy(g_tramp, g_stolen, n);
-	g_tramp[n] = 0xE9;
-	rel = (int32_t)((g_site + n) - (g_tramp + n + 5));
-	memcpy(g_tramp + n + 1, &rel, 4);
-	g_orig = (update_fb_fn)g_tramp;
-
 	memset(jmp, 0x90, sizeof jmp);
 	jmp[0] = 0xE9;
 	rel = (int32_t)((uint8_t *)&hook_update_fb - (g_site + 5));
 	memcpy(jmp + 1, &rel, 4);
+	memset(g_jmp, 0x90, sizeof g_jmp);
+	memcpy(g_jmp, jmp, n);
+	g_orig = call_orig;
+
 	if (!VirtualProtect(g_site, n, PAGE_EXECUTE_READWRITE, &old))
 		return 0;
 	memcpy(g_site, jmp, n);
@@ -358,7 +473,8 @@ static DWORD WINAPI boot(LPVOID arg)
 		flog("update_frontbuffer not found; Wine/X path remains");
 		return 1;
 	}
-	flog("update_frontbuffer=0x%lx", (unsigned long)site);
+	flog("update_frontbuffer=0x%lx size~%u", (unsigned long)site,
+	     (unsigned)approx_fn_size(site));
 	if (!plant(site)) {
 		flog("plant failed");
 		return 1;

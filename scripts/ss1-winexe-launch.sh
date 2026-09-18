@@ -41,6 +41,10 @@ EXTRA_ARGS=""
 CURRENT_WEX=""
 DEFAULT_PREFIX="$WIN/wineprefix-prebuilt"
 SS1_DESKTOP="ss1,640x480"
+# Conservative first-pass floor. Leftover WMP (mspmspsv.exe ~29 MB) plus
+# Civ II (~80-88 MB RSS) drove MemAvailable to ~11-15 MB and OOM. Change
+# this one assignment (or export SS1_LAUNCH_MEM_FLOOR_KB) to retune.
+SS1_LAUNCH_MEM_FLOOR_KB="${SS1_LAUNCH_MEM_FLOOR_KB:-48000}"
 
 normalize_runtime_env() {
   if [ -z "$HOME" ] || [ "$HOME" = "/" ]; then
@@ -648,37 +652,103 @@ kill_comm_all() {
   done
 }
 
-stop_app() {
-  if [ "$(rt_get state)" != APP_RUNNING ]; then
-    echo "READY (no app)"
-    return 0
-  fi
-  stem=$(rt_get profile)
-  comm=$(rt_get app_comm)
-  apid=$(rt_get app_pid)
-  rtlog "STOP_APP profile=${stem:-} comm=${comm:-} pid=${apid:-}"
-  stop_watch
-  stop_pin
-  stop_profile_helpers "$stem"
-  if [ -n "$apid" ]; then
-    kill -TERM "$apid" 2>/dev/null || true
-  fi
-  kill_comm_all "$comm"
-  # Paint imgsvc helper can leak RAM after STOP.
-  if [ "$comm" = mspaint.exe ] || [ "$stem" = paint ]; then
-    for p in $(pidof svchost.exe 2>/dev/null); do
-      cmd=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)
+mem_available_kb() {
+  awk '/^MemAvailable:/{print $2; exit}' /proc/meminfo 2>/dev/null || echo 0
+}
+
+# App-specific leftovers that must not survive a handoff. Do not match
+# explorer.exe, wineserver, services.exe, rpcss, winedevice, plugplay,
+# start.exe, or the Xorg/presenter/keep-input stack.
+is_stale_app_comm() {
+  case "$1" in
+    notepad.exe|NOTEPAD.EXE|mspaint.exe|winmine.exe|sol.exe|freecell.exe|mshearts.exe| \
+    civ2.exe|CIV2.EXE| \
+    wmplayer.exe|WMPLAYER.EXE|wmplayer.ex|mspmspsv.exe|wmpnscfg.exe| \
+    winamp.exe|Winamp.exe|SIMCITY.EXE|simcity.exe|SIMCITY.exe)
+      return 0 ;;
+    'C&C95.EXE'|ss1-cnc-click*|ss1-cnc-focus*|ss1-cnc-capsli*|ss1-cnc-bltti*|ss1-cnc-ddpro*|ss1-cnc-ddraw*)
+      return 0 ;;
+  esac
+  return 1
+}
+
+reap_stale_app_processes() {
+  removed=""
+  for d in /proc/[0-9]*; do
+    pid=${d#/proc/}
+    comm=$(cat "$d/comm" 2>/dev/null) || continue
+    if is_stale_app_comm "$comm"; then
+      kill -TERM "$pid" 2>/dev/null || true
+      removed="$removed $comm:$pid"
+      continue
+    fi
+    if [ "$comm" = svchost.exe ]; then
+      cmd=$(tr '\0' ' ' < "$d/cmdline" 2>/dev/null)
       echo "$cmd" | grep -q imgsvc || continue
-      kill -TERM "$p" 2>/dev/null || true
-    done
+      kill -TERM "$pid" 2>/dev/null || true
+      removed="$removed imgsvc:$pid"
+    fi
+  done
+  sleep 0.4
+  for d in /proc/[0-9]*; do
+    pid=${d#/proc/}
+    comm=$(cat "$d/comm" 2>/dev/null) || continue
+    if is_stale_app_comm "$comm"; then
+      kill -KILL "$pid" 2>/dev/null || true
+      case " $removed " in
+        *" $comm:$pid "*) ;;
+        *) removed="$removed $comm:$pid" ;;
+      esac
+    fi
+  done
+  echo "$removed" | sed 's/^ *//;s/ *$//'
+}
+
+stop_app() {
+  prev_profile=$(rt_get profile)
+  prev_name=$(rt_get name)
+  prev_state=$(rt_get state)
+  mem_before=$(mem_available_kb)
+  had_app=0
+  if [ "$prev_state" = APP_RUNNING ]; then
+    had_app=1
+    stem=$prev_profile
+    comm=$(rt_get app_comm)
+    apid=$(rt_get app_pid)
+    rtlog "STOP_APP profile=${stem:-} comm=${comm:-} pid=${apid:-}"
+    wexlog "stop: previous=${stem:-none} name=${prev_name:-} pid=${apid:-} comm=${comm:-} mem_avail_kb=$mem_before"
+    echo "stop previous=${stem:-none} pid=${apid:-} comm=${comm:-} mem_avail_kb=$mem_before"
+    stop_watch
+    stop_pin
+    stop_profile_helpers "$stem"
+    if [ -n "$apid" ]; then
+      kill -TERM "$apid" 2>/dev/null || true
+    fi
+    kill_comm_all "$comm"
+    # Paint imgsvc helper can leak RAM after STOP.
+    if [ "$comm" = mspaint.exe ] || [ "$stem" = paint ]; then
+      for p in $(pidof svchost.exe 2>/dev/null); do
+        cmd=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)
+        echo "$cmd" | grep -q imgsvc || continue
+        kill -TERM "$p" 2>/dev/null || true
+      done
+    fi
+    kill_stray_explorers
+    rm -f "$APP_PIDF"
+    apply_neutral_display
+    CURRENT_WEX=""
+    write_runtime READY "" "" "" "" ""
+    rtlog "APP_RUNNING -> READY"
   fi
-  kill_stray_explorers
-  rm -f "$APP_PIDF"
-  apply_neutral_display
-  CURRENT_WEX=""
-  write_runtime READY "" "" "" "" ""
-  rtlog "APP_RUNNING -> READY"
-  echo "READY explorers=$(count_ss1_explorers) mem=$(awk '/^MemAvailable:/{print $2}' /proc/meminfo)kB"
+  stale=$(reap_stale_app_processes)
+  mem_after=$(mem_available_kb)
+  wexlog "stop: stale_removed=${stale:-none} mem_avail_kb_after=$mem_after floor_kb=$SS1_LAUNCH_MEM_FLOOR_KB"
+  echo "stop stale_removed=${stale:-none} mem_avail_kb=$mem_before->$mem_after floor_kb=$SS1_LAUNCH_MEM_FLOOR_KB"
+  if [ "$had_app" != 1 ] && [ -z "$stale" ]; then
+    echo "READY (no app) explorers=$(count_ss1_explorers) mem=${mem_after}kB"
+  else
+    echo "READY explorers=$(count_ss1_explorers) mem=${mem_after}kB"
+  fi
 }
 
 on_app_exited() {
@@ -854,9 +924,33 @@ launch_into_ss1() {
     echo "optional file missing: $optional (continuing)" >&2
   fi
 
-  if [ "$(rt_get state)" = APP_RUNNING ]; then
-    stop_app
+  prev_profile=$(rt_get profile)
+  prev_state=$(rt_get state)
+  mem_before=$(mem_available_kb)
+  wexlog "launch: requested=$stem name=$name prev=${prev_profile:-none} state=${prev_state:-} mem_avail_kb=$mem_before floor_kb=$SS1_LAUNCH_MEM_FLOOR_KB"
+  echo "launch requested=$stem name=$name prev=${prev_profile:-none} mem_avail_kb=$mem_before floor_kb=$SS1_LAUNCH_MEM_FLOOR_KB"
+
+  stop_app
+
+  mem_after=$(mem_available_kb)
+  wexlog "launch: after_cleanup mem_avail_kb=$mem_after floor_kb=$SS1_LAUNCH_MEM_FLOOR_KB"
+  echo "launch after_cleanup mem_avail_kb=$mem_after floor_kb=$SS1_LAUNCH_MEM_FLOOR_KB"
+  if [ -z "$mem_after" ] || [ "$mem_after" -lt "$SS1_LAUNCH_MEM_FLOOR_KB" ]; then
+    echo "launch below floor: MemAvailable ${mem_after:-0} kB < ${SS1_LAUNCH_MEM_FLOOR_KB} kB; retrying stale cleanup"
+    wexlog "launch: below floor mem_avail_kb=${mem_after:-0} retrying stale cleanup"
+    reap_stale_app_processes >/dev/null
+    sleep 0.5
+    mem_after=$(mem_available_kb)
+    echo "launch recheck mem_avail_kb=$mem_after floor_kb=$SS1_LAUNCH_MEM_FLOOR_KB"
+    wexlog "launch: recheck mem_avail_kb=$mem_after"
+    if [ -z "$mem_after" ] || [ "$mem_after" -lt "$SS1_LAUNCH_MEM_FLOOR_KB" ]; then
+      echo "launch refused: MemAvailable ${mem_after:-0} kB still below floor ${SS1_LAUNCH_MEM_FLOOR_KB} kB; leaving READY"
+      wexlog "launch: REFUSED requested=$stem mem_avail_kb=${mem_after:-0} floor_kb=$SS1_LAUNCH_MEM_FLOOR_KB"
+      return 1
+    fi
   fi
+  echo "launch allowed requested=$stem mem_avail_kb=$mem_after floor_kb=$SS1_LAUNCH_MEM_FLOOR_KB"
+  wexlog "launch: ALLOWED requested=$stem mem_avail_kb=$mem_after floor_kb=$SS1_LAUNCH_MEM_FLOOR_KB"
 
   export_wine_env "$prefix"
   ini_env_apply "$pf"
@@ -901,7 +995,12 @@ launch_into_ss1() {
   echo "===== launch $name $(uptime_ms) =====" >>"$WINELOG"
   echo "cmd=$launch" >>"$WINELOG"
   wexlog "wine start into ss1: $launch"
-  HOME="$HOME" DISPLAY=:0 setsid /bin/sh -c "export HOME=\"$HOME\"; export DISPLAY=:0; $launch" \
+  pal8_pre=""
+  if [ "${SS1_PAL8:-0}" = 1 ] && [ -f "$WIN/bin/ss1-pal8-map.so" ]; then
+    pal8_pre="export SS1_PAL8=1; export LD_PRELOAD=$WIN/bin/ss1-pal8-map.so; "
+    wexlog "PAL8 preload $WIN/bin/ss1-pal8-map.so (wine child only)"
+  fi
+  HOME="$HOME" DISPLAY=:0 setsid /bin/sh -c "export HOME=\"$HOME\"; export DISPLAY=:0; $pal8_pre$launch" \
     </dev/null >>"$WINELOG" 2>&1 &
   echo $! > "$APP_PIDF"
 
@@ -930,7 +1029,8 @@ launch_into_ss1() {
   write_runtime APP_RUNNING "$stem" "$name" "$tpid" "$target" ""
   rtlog "READY -> APP_RUNNING profile=$stem pid=$tpid"
   start_watch "$stem" "$target" "$tpid"
-  echo "LAUNCHED profile=$stem name=$name wex=${CURRENT_WEX:-} app=$tpid explorers=$n log=$WINELOG"
+  wexlog "launch: LAUNCHED requested=$stem pid=$tpid comm=$target"
+  echo "LAUNCHED profile=$stem name=$name wex=${CURRENT_WEX:-} app=$tpid explorers=$n log=$WINELOG mem_avail_kb=$(mem_available_kb)"
 }
 
 launch_wex_into_desktop() {
