@@ -118,6 +118,13 @@ always @(posedge clk) begin
 			S_WAIT: begin
 				if (DDRAM_DOUT_READY) begin
 					beat_q <= DDRAM_DOUT;
+					// Each 64-bit beat holds entries 2N and 2N+1.
+					// S_PAL_NEXT writes the odd entry and leaves pal_idx
+					// at 2N+1; advance to 2N+2 here (pal_wr=0) so the
+					// next S_PAL_HI does not overwrite the odd slot.
+					// beat==0 is the first palette beat (pal_idx already 0).
+					if (after_wait == S_PAL_HI && beat != 8'd0)
+						pal_idx <= pal_idx + 8'd1;
 					state  <= after_wait;
 				end
 			end
@@ -152,12 +159,16 @@ always @(posedge clk) begin
 			end
 
 			S_PAL_HI: begin
+				// Low 32-bit word → entry 2N. 00RRGGBB LE beat, so
+				// [23:0] is RRGGBB, which ascal pal2_dw expects.
 				pal_rgb <= beat_q[23:0];
 				pal_wr  <= 1'b1;
 				state   <= S_PAL_NEXT;
 			end
 
 			S_PAL_NEXT: begin
+				// High 32-bit word → entry 2N+1. pal_idx updates on
+				// this same edge as pal_wr, so FB_PAL_ADDR is 2N+1.
 				pal_idx <= pal_idx + 8'd1;
 				pal_rgb <= beat_q[55:32];
 				pal_wr  <= 1'b1;
