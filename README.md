@@ -1,4 +1,4 @@
-# WinEXE
+# MiSTer WinEXE
 
 WinEXE lets SuperStation One / MiSTer run selected classic 32-bit Windows applications and games.
 
