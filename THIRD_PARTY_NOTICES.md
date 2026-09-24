@@ -36,15 +36,16 @@ artifact. That artifact is **not** in this git tree. If you
 redistribute Wine binaries, include Wine’s license texts and offer
 corresponding source as LGPL requires.
 
-Default SuperStation path: `/media/fat/Windows/wine-installer/opt/wine-devel/`
+Default SuperStation path: `/media/fat/games/WinEXE/wine-installer/opt/wine-devel/`
 
 ## Box86
 
 [Box86](https://github.com/ptitSeb/box86) is MIT.
-The Cortex-A9 Box86 tree used on SuperStation is a companion runtime,
-not stored in this repository. Sidecar multimedia builds (`box86-gst`,
-`box86-gstflow`) are experimental and not part of the v0.1.0-beta
-end-user zip.
+The public zip ships the generic ARMHF binary from
+[ryanfortner/box86-debs](https://github.com/ryanfortner/box86-debs)
+(`box86-generic-arm`, see `Windows/box86-ss1/SOURCE.txt`).
+Sidecar multimedia builds (`box86-gst`, `box86-gstflow`) are
+experimental and are **not** in the v0.1.0-beta end-user zip.
 
 ## X.Org / dummy video / evdev
 

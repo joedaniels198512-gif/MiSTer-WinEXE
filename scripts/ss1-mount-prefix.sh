@@ -2,8 +2,8 @@
 # Loop-mount the ext4 Wine prefix image. exFAT cannot store prefix symlinks.
 # Does not format or recreate the image. Does not touch /usr.
 set -e
-IMG="${WINEPREFIX_IMG:-/media/fat/Windows/wineprefix-prebuilt.ext4}"
-MNT="${WINEPREFIX:-/media/fat/Windows/wineprefix-prebuilt}"
+IMG="${WINEPREFIX_IMG:-/media/fat/games/WinEXE/wineprefix-prebuilt.ext4}"
+MNT="${WINEPREFIX:-/media/fat/games/WinEXE/wineprefix-prebuilt}"
 
 if mount | grep -q " on ${MNT} "; then
   echo "already mounted: $MNT"

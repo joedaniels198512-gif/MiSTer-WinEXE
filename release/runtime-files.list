@@ -1,7 +1,8 @@
-# Public runtime files copied to /media/fat/Windows/bin
+# Public runtime files copied to /media/fat/games/WinEXE/bin
 # Paths are relative to the repository scripts/ directory unless noted.
 # Development-only WMP/DShow/Civ-II injectors are intentionally omitted.
 
+winexe-env.sh
 ss1-winexe-launch.sh
 ss1-winexe-xorg.sh
 ss1-winexe-present-restart.sh
@@ -29,3 +30,5 @@ ss1-winexe-winamp-config.sh
 ss1-winexe-notepad.sh
 ss1-winexe-run-exe.sh
 ss1-winexe-freecell-deal.sh
+wine
+wineserver

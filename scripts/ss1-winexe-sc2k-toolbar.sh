@@ -5,7 +5,7 @@
 #   ss1-winexe-sc2k-toolbar.sh watch
 #   ss1-winexe-sc2k-toolbar.sh stop
 set +e
-WIN="${WIN:-/media/fat/Windows}"
+WIN="${WIN:-/media/fat/games/WinEXE}"
 PIDFILE=/tmp/ss1-winexe-sc2k-toolbar.pid
 LOG="${SS1_SC2K_TB_LOG:-$WIN/logs/ss1-winexe-sc2k-toolbar.log}"
 MODE=${1:-watch}
@@ -74,7 +74,7 @@ class XWindowChanges(Structure):
 class XEvent(Structure):
     _fields_ = [("pad", c_char * 192)]
 
-X = ctypes.CDLL("/media/fat/Windows/x11/lib/libX11.so.6")
+X = ctypes.CDLL("/media/fat/games/WinEXE/x11/lib/libX11.so.6")
 X.XOpenDisplay.restype = c_void_p
 X.XDefaultRootWindow.restype = c_ulong
 X.XDefaultRootWindow.argtypes = [c_void_p]

@@ -4,7 +4,7 @@
 #   ss1-cnc-pal8.sh start   — inject hook after C&C is up
 #   ss1-cnc-pal8.sh stop    — clear mailbox → FPGA BGRX, presenter resumes
 set -e
-WIN="${WIN:-/media/fat/Windows}"
+WIN="${WIN:-/media/fat/games/WinEXE}"
 PREFIX="${WINEPREFIX:-$WIN/wineprefix-prebuilt}"
 CMD="${1:-start}"
 INJECT="$WIN/apps/diag/ss1-cnc-pal8.exe"

@@ -5,7 +5,7 @@
 #   ss1-winexe-cnc-cd.sh start
 #   ss1-winexe-cnc-cd.sh stop
 set -e
-WIN="${WIN:-/media/fat/Windows}"
+WIN="${WIN:-/media/fat/games/WinEXE}"
 PREFIX="${WINEPREFIX:-$WIN/wineprefix-prebuilt}"
 ISO="${SS1_CNC_ISO:-$WIN/iso/CnC_NOD95.iso}"
 MNT="${SS1_CNC_MNT:-/tmp/ss1-cnc-cd}"

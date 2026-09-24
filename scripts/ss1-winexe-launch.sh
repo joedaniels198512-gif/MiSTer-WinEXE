@@ -15,8 +15,10 @@
 # Apps join that desktop via wine start (registry Desktop=ss1).
 # Do not use: wine explorer /desktop=ss1,640x480 <app.exe>
 set +e
-WIN="${WIN:-/media/fat/Windows}"
 HERE=$(CDPATH= cd "$(dirname "$0")" && pwd)
+# shellcheck disable=SC1091
+[ -f "$HERE/winexe-env.sh" ] && . "$HERE/winexe-env.sh"
+WIN="${WIN:-${WINEXE_ROOT:-/media/fat/games/WinEXE}}"
 BIN="$WIN/bin"
 [ -x "$BIN/ss1-winexe-xorg.sh" ] || BIN="$HERE"
 PROFILES="${SS1_PROFILES:-$WIN/profiles}"
@@ -54,8 +56,8 @@ normalize_runtime_env() {
   export LOGNAME="${LOGNAME:-$USER}"
   export DISPLAY=:0
   case ":$PATH:" in
-    *:/media/fat/Windows/bin:*) ;;
-    *) export PATH="/media/fat/Windows/bin:/usr/bin:/bin:/usr/sbin:/sbin${PATH:+:$PATH}" ;;
+    *:$WIN/bin:*) ;;
+    *) export PATH="$WIN/bin:/usr/bin:/bin:/usr/sbin:/sbin${PATH:+:$PATH}" ;;
   esac
   if [ -d /root ]; then
     cd /root 2>/dev/null || cd "$WIN" || cd /
@@ -312,15 +314,26 @@ core_ok() {
 
 ensure_core() {
   core_ok && return 0
-  if [ -f /media/fat/WinEXE.rbf ]; then
-    rbf=/media/fat/WinEXE.rbf
-  elif [ -f /media/fat/_Computer/WinEXE.rbf ]; then
-    rbf=/media/fat/_Computer/WinEXE.rbf
-  elif [ -f /media/fat/_Console/WinEXE.rbf ]; then
-    rbf=/media/fat/_Console/WinEXE.rbf
-  elif [ -f /media/fat/WinEXE_Test.rbf ]; then
-    rbf=/media/fat/WinEXE_Test.rbf
-  else
+  rbf=""
+  for cand in \
+    /media/fat/_Computer/WinEXE.rbf \
+    /media/fat/WinEXE.rbf \
+    /media/fat/_Console/WinEXE.rbf
+  do
+    if [ -f "$cand" ]; then
+      rbf=$cand
+      break
+    fi
+  done
+  if [ -z "$rbf" ]; then
+    for cand in /media/fat/_Computer/WinEXE_*.rbf /media/fat/WinEXE_*.rbf /media/fat/_Console/WinEXE_*.rbf; do
+      if [ -f "$cand" ]; then
+        rbf=$cand
+        break
+      fi
+    done
+  fi
+  if [ -z "$rbf" ]; then
     echo "no WinEXE RBF found; load the core from the MiSTer menu" >&2
     return 1
   fi

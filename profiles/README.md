@@ -3,7 +3,7 @@
 INI files consumed by `ss1-winexe-launch`. One shared `WinEXE.rbf`;
 these files are the per-app differences.
 
-Install as `/media/fat/Windows/profiles/`.
+Install as `/media/fat/games/WinEXE/profiles/`.
 
 OSD selection uses `.WEX` pointers in `/media/fat/games/WinEXE/`.
 Do **not** duplicate INI settings in the `.WEX`.

@@ -17,6 +17,14 @@ ver=$(tr -d ' \n' < VERSION)
   || bad "docs missing"
 grep -q 'WinEXE' README.md || bad "README must name WinEXE"
 grep -q 'WinEXE_Test.rbf' README.md && bad "README still documents WinEXE_Test.rbf as current"
+grep -q 'vscode-file:' README.md && bad "README contains vscode-file links"
+grep -E '\(vscode-file:' README.md docs/*.md >/dev/null 2>&1 && bad "docs contain vscode-file links"
+if [ ! -f "Scripts/WinEXE Installer.sh" ] && [ ! -f "scripts/WinEXE Installer.sh" ]; then
+  bad "missing WinEXE Installer.sh"
+fi
+[ -f scripts/winexe-env.sh ] || bad "missing scripts/winexe-env.sh"
+grep -q 'games/WinEXE/apps' README.md || bad "README must use games/WinEXE/apps"
+grep -qE '_Computer/WinEXE' README.md || bad "README must document _Computer/WinEXE"
 
 # Profiles: required keys
 for ini in profiles/*.ini; do
@@ -60,7 +68,9 @@ git ls-files | grep -qE '^tmp/|^extract' && bad "tracked tmp/extract path"
 # Shell syntax for public runtime + packager
 for sh in scripts/ss1-winexe-launch.sh scripts/ss1-winexe-install-layout.sh \
   scripts/ss1-winexe-check-layout.sh scripts/ss1-winexe-package-release.sh \
-  scripts/ss1-winexe-release-check.sh install.sh
+  scripts/ss1-winexe-release-check.sh install.sh \
+  "Scripts/WinEXE Installer.sh" scripts/wine scripts/wineserver \
+  scripts/winexe-env.sh
 do
   sh -n "$sh" || bad "syntax $sh"
 done

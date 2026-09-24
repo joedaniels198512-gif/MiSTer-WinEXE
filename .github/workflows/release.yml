@@ -1,8 +1,7 @@
 name: Release sanity and package
 
-# Builds WinEXE-v0.1.0-beta.zip from public files only.
-# Does not compile Quartus, Wine, or Box86.
-# Optional binaries may be placed in artifacts/ by a later download step.
+# Builds a FAT-rooted WinEXE-v0.1.0-beta.zip
+# (_Computer/, Scripts/, docs/WinEXE/, games/WinEXE/). Place CI binaries in artifacts/.
 
 on:
   workflow_dispatch:
@@ -43,7 +42,15 @@ jobs:
                    scripts/ss1-winexe-package-release.sh \
                    scripts/ss1-winexe-install-layout.sh \
                    scripts/ss1-winexe-check-layout.sh \
-                   install.sh
+                   install.sh \
+                   scripts/wine scripts/wineserver \
+                   scripts/winexe-env.sh
+          if [ -f "scripts/WinEXE Installer.sh" ]; then
+            chmod +x "scripts/WinEXE Installer.sh"
+          fi
+          if [ -f "Scripts/WinEXE Installer.sh" ]; then
+            chmod +x "Scripts/WinEXE Installer.sh"
+          fi
           scripts/ss1-winexe-release-check.sh
 
       - name: Stage a fake SD tree

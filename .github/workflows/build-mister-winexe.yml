@@ -36,7 +36,8 @@ jobs:
       - name: Clone Main_MiSTer and apply WinEXE hook
         run: |
           set -euo pipefail
-          git clone --depth 1 https://github.com/MiSTer-devel/Main_MiSTer.git main-src
+          git clone https://github.com/MiSTer-devel/Main_MiSTer.git main-src
+          git -C main-src checkout --force 4145f1dba9127a8935a3071a0650166ba5d699c3
           echo "MAIN_SHA=$(git -C main-src rev-parse HEAD)" | tee -a "$GITHUB_ENV"
           git -C main-src rev-parse HEAD > MAIN_MISTER.sha
           chmod +x main/apply-winexe-main.sh

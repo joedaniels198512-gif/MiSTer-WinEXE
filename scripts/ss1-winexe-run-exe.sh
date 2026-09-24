@@ -2,7 +2,7 @@
 # Launch an apps/*.exe on the existing WinEXE stack.
 # Known EXEs use profiles; anything else still uses the generic 60 Hz path.
 set -e
-WIN="${WIN:-/media/fat/Windows}"
+WIN="${WIN:-/media/fat/games/WinEXE}"
 LAUNCH="$WIN/bin/ss1-winexe-launch.sh"
 [ -x "$LAUNCH" ] || LAUNCH="$(dirname "$0")/ss1-winexe-launch.sh"
 APPS="$WIN/apps"

@@ -4,7 +4,7 @@
 # are not overwritten. Does not change FPGA / Xorg / presenter / input.
 # Does not use sc2kfix or WIN95/SETUP.EXE.
 set -e
-WIN="${WIN:-/media/fat/Windows}"
+WIN="${WIN:-/media/fat/games/WinEXE}"
 PREFIX="${WINEPREFIX:-$WIN/wineprefix-prebuilt}"
 REG="$WIN/bin/ss1-winexe-sc2k.reg"
 

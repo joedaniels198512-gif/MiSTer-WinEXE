@@ -1,6 +1,16 @@
 #!/bin/sh
-# End-user installer. Copies the public WinEXE layout onto a MiSTer/SuperStation SD.
-#   ./install.sh [/media/fat]
+# Advanced / SSH fallback. The normal path is:
+#   Scripts -> WinEXE Installer
 set -e
 HERE=$(CDPATH= cd "$(dirname "$0")" && pwd)
-exec "$HERE/scripts/ss1-winexe-install-layout.sh" "${1:-/media/fat}"
+if [ -f "$HERE/Scripts/WinEXE Installer.sh" ]; then
+  exec "$HERE/Scripts/WinEXE Installer.sh" "${1:-/media/fat}"
+fi
+if [ -f "$HERE/scripts/WinEXE Installer.sh" ]; then
+  exec "$HERE/scripts/WinEXE Installer.sh" "${1:-/media/fat}"
+fi
+if [ -f "$HERE/../Scripts/WinEXE Installer.sh" ]; then
+  exec "$HERE/../Scripts/WinEXE Installer.sh" "${1:-/media/fat}"
+fi
+echo "missing WinEXE Installer.sh" >&2
+exit 1

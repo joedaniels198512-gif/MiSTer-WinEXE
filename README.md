@@ -38,7 +38,7 @@ Extract the contents of the zip to the **root** of the MiSTer / SuperStation SD 
 
 The package already contains the redistributable WinEXE runtime, including:
 
-- `WinEXE.rbf`
+- `WinEXE_<date>.rbf`
 - `MiSTer_WinEXE`
 - Wine 7.1
 - Box86
@@ -49,19 +49,15 @@ The package already contains the redistributable WinEXE runtime, including:
 
 You do **not** need to download separate GitHub Actions artifacts.
 
-### 3. Run the installer
+### 3. Boot and install
 
-From the MiSTer / SuperStation menu:
+Boot the MiSTer / SuperStation. From the menu:
 
 **Scripts → WinEXE Installer**
 
 The installer configures WinEXE and installs the runtime.
 
-Canonical core path:
-
-```text
-/media/fat/_Computer/WinEXE.rbf
-```
+The core is installed under `_Computer` as `WinEXE_<YYYYMMDD>.rbf` (for example `/media/fat/_Computer/WinEXE_20260918.rbf`).
 
 SSH is not required for a normal installation.
 
@@ -72,7 +68,7 @@ WinEXE does **not** contain Microsoft software or commercial games.
 Copy your own legally obtained 32-bit application files onto the SD card. For Notepad:
 
 ```text
-/media/fat/Windows/apps/notepad.exe
+/media/fat/games/WinEXE/apps/notepad.exe
 ```
 
 Per-application folders and extra files: [Application setup](docs/APPS.md).
@@ -114,12 +110,12 @@ See [docs/APPS.md](docs/APPS.md) for file names and folders. See [docs/KNOWN_ISS
 WinEXE does **not** include Windows applications. Copy 32-bit (PE32) files you are allowed to use:
 
 ```text
-/media/fat/Windows/apps/notepad.exe
+/media/fat/games/WinEXE/apps/notepad.exe
 ```
 
 Then start **WinEXE** and choose `Notepad.wex` from the OSD.
 
-Paint is `/media/fat/Windows/apps/mspaint.exe`. XP card games go in `/media/fat/Windows/apps/xp-games/`. Other titles have their own folders.
+Paint is `/media/fat/games/WinEXE/apps/mspaint.exe`. XP card games go in `/media/fat/games/WinEXE/apps/xp-games/`. Other titles have their own folders.
 
 Full layout and CD notes: [Application setup](docs/APPS.md).
 

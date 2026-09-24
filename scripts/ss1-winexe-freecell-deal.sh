@@ -3,7 +3,7 @@
 # opens a dealt game. Profile-only; does not change Wine, Box86, presenter,
 # FPGA, or freecell.exe.
 set +e
-WIN="${WIN:-/media/fat/Windows}"
+WIN="${WIN:-/media/fat/games/WinEXE}"
 export HOME="${HOME:-/root}"
 export DISPLAY="${DISPLAY:-:0}"
 if [ -f "$WIN/bin/ss1-x11-env.sh" ]; then
@@ -48,7 +48,7 @@ while time.time() - t0 < 10:
 else:
     raise SystemExit(0)
 
-X = ctypes.CDLL("/media/fat/Windows/x11/lib/libX11.so.6")
+X = ctypes.CDLL("/media/fat/games/WinEXE/x11/lib/libX11.so.6")
 X.XOpenDisplay.restype = c_void_p
 X.XDefaultRootWindow.restype = c_ulong
 X.XDefaultRootWindow.argtypes = [c_void_p]

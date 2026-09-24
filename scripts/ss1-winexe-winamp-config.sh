@@ -3,7 +3,7 @@
 # Safe to re-run. Call with wineserver stopped so user.reg is not overwritten.
 # Does not change FPGA / Xorg / presenter / input.
 set -e
-WIN="${WIN:-/media/fat/Windows}"
+WIN="${WIN:-/media/fat/games/WinEXE}"
 PREFIX="${WINEPREFIX:-$WIN/wineprefix-prebuilt}"
 WA="$PREFIX/drive_c/Program Files/Winamp"
 WINDDIR="$PREFIX/drive_c/windows"

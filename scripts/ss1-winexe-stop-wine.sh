@@ -9,7 +9,7 @@
 #   ss1-winexe-stop-wine.sh          # stop + report
 #   ss1-winexe-stop-wine.sh status   # report only
 set +e
-WIN="${WIN:-/media/fat/Windows}"
+WIN="${WIN:-/media/fat/games/WinEXE}"
 MODE=${1:-stop}
 
 XORG_PID=$(cat /tmp/ss1-xorg.pid 2>/dev/null)

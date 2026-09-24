@@ -4,7 +4,7 @@
 #      SS1_CURSOR_ONLY (default 1), SS1_DIRTY, SS1_TILE_W, SS1_TILE_H,
 #      SS1_DIRTY_PCT, SS1_FRAME_US, SS1_XSYNC, SS1_OSYNC
 set -e
-WIN="${WIN:-/media/fat/Windows}"
+WIN="${WIN:-/media/fat/games/WinEXE}"
 LOGDIR="$WIN/logs"
 PRESLOG="${SS1_PRESENT_LOG:-$LOGDIR/ss1-winexe-x11-present.log}"
 

@@ -6,7 +6,7 @@
 #   ss1-winexe-civ2-cd.sh start
 #   ss1-winexe-civ2-cd.sh stop
 set -e
-WIN="${WIN:-/media/fat/Windows}"
+WIN="${WIN:-/media/fat/games/WinEXE}"
 PREFIX="${WINEPREFIX:-$WIN/wineprefix-prebuilt}"
 ISO="${SS1_CIV2_ISO:-$WIN/iso/Civ2_MGE.iso}"
 MNT="${SS1_CIV2_MNT:-/tmp/ss1-civ2-cd}"

@@ -8,8 +8,8 @@
 #   ss1-xorg.sh stop
 set -e
 
-X11="${X11_ROOT:-/media/fat/Windows/x11}"
-HOSTLIBS="${HOSTLIBS:-/media/fat/Windows/host-libs}"
+X11="${X11_ROOT:-/media/fat/games/WinEXE/x11}"
+HOSTLIBS="${HOSTLIBS:-/media/fat/games/WinEXE/host-libs}"
 DISPLAY_NUM="${DISPLAY_NUM:-0}"
 export DISPLAY=":${DISPLAY_NUM}"
 
@@ -20,7 +20,7 @@ unset WAYLAND_DISPLAY
 
 XORG="$X11/lib/xorg/Xorg"
 [ -x "$XORG" ] || XORG="$X11/bin/Xorg"
-LOG="${XORG_LOG:-/media/fat/Windows/logs/Xorg.${DISPLAY_NUM}.log}"
+LOG="${XORG_LOG:-/media/fat/games/WinEXE/logs/Xorg.${DISPLAY_NUM}.log}"
 mkdir -p "$(dirname "$LOG")" /tmp/.X11-unix /tmp/bin /tmp/xorg.conf.d "$X11/etc/X11/xorg.conf.d"
 # Xorg was patched to exec /tmp/bin/xkbcomp (not /usr/bin/xkbcomp).
 # Remove any symlink first so we do not clobber x11/bin/xkbcomp.
@@ -61,7 +61,7 @@ cmd_start() {
 
   # Root, no logind, no VT grab beyond the existing framebuffer.
   # setsid: survive SSH hangup. stdout/stderr kept (Xorg also writes -logfile).
-  STDOUT_LOG="${XORG_STDOUT_LOG:-/media/fat/Windows/logs/xorg-stdout.log}"
+  STDOUT_LOG="${XORG_STDOUT_LOG:-/media/fat/games/WinEXE/logs/xorg-stdout.log}"
   setsid "$XORG" ":${DISPLAY_NUM}" \
     -config "$X11/etc/X11/xorg.conf" \
     -configdir /tmp/xorg.conf.d \

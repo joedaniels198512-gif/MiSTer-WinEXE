@@ -2,7 +2,7 @@
 # Launch genuine Winamp 2.91 on the WinEXE stack via profile.
 # Optional MP3 path is appended as a Wine argument.
 set -e
-WIN="${WIN:-/media/fat/Windows}"
+WIN="${WIN:-/media/fat/games/WinEXE}"
 LAUNCH="$WIN/bin/ss1-winexe-launch.sh"
 [ -x "$LAUNCH" ] || LAUNCH="$(dirname "$0")/ss1-winexe-launch.sh"
 MP3=${1:-}

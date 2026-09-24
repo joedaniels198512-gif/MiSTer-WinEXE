@@ -12,7 +12,7 @@
 #   ss1-winexe-keep-input.sh watch    # daemon until core is not WinEXE*
 #   ss1-winexe-keep-input.sh stop
 set -e
-WIN="${WIN:-/media/fat/Windows}"
+WIN="${WIN:-/media/fat/games/WinEXE}"
 MOUSE="${SS1_MOUSE_EVENT:-/dev/input/event0}"
 KBD="${SS1_KBD_EVENT:-/dev/input/event1}"
 PIDFILE=/tmp/ss1-winexe-keep-input.pid

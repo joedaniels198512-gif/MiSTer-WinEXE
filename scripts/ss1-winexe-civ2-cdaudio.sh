@@ -4,7 +4,7 @@
 #
 #   ss1-winexe-civ2-cdaudio.sh start|stop|status
 set -e
-WIN="${WIN:-/media/fat/Windows}"
+WIN="${WIN:-/media/fat/games/WinEXE}"
 DIR="${SS1_CIV2_CDAUDIO_DIR:-$WIN/apps/civ2/cdaudio}"
 CMD="${1:-start}"
 

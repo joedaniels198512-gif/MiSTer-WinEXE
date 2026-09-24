@@ -1,0 +1,10 @@
+#!/bin/sh
+# Box86 + Wine 7.1 wrapper. Installed as /media/fat/games/WinEXE/bin/wine
+WIN="${WIN:-/media/fat/games/WinEXE}"
+BOX86="${BOX86:-$WIN/box86-ss1/box86}"
+WINEELF="${WINELOADER:-$WIN/wine-installer/opt/wine-devel/bin/wine}"
+export BOX86_NOBANNER="${BOX86_NOBANNER:-1}"
+if [ -z "${BOX86_LD_LIBRARY_PATH:-}" ]; then
+  export BOX86_LD_LIBRARY_PATH="$WIN/box86-extracted/usr/lib/box86-i386-linux-gnu:$WIN/wine-installer/opt/wine-devel/lib:$WIN/wine-installer/opt/wine-devel/lib/wine/i386-unix"
+fi
+exec "$BOX86" "$WINEELF" "$@"

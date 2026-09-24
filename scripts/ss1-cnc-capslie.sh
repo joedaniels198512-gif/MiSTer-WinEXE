@@ -6,7 +6,7 @@
 #   ss1-cnc-capslie.sh start   — waiter; plants then exits
 #   ss1-cnc-capslie.sh stop    — no-op (waiter is already gone)
 set -e
-WIN="${WIN:-/media/fat/Windows}"
+WIN="${WIN:-/media/fat/games/WinEXE}"
 PREFIX="${WINEPREFIX:-$WIN/wineprefix-prebuilt}"
 CMD="${1:-start}"
 EXE="$WIN/apps/diag/ss1-cnc-capslie.exe"

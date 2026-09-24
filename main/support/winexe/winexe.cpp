@@ -21,8 +21,9 @@
 
 char is_winexe();
 
-#define WINEXE_LAUNCHER "/media/fat/Windows/bin/ss1-winexe-launch.sh"
-#define WINEXE_SPAWN_LOG "/media/fat/Windows/logs/wex-spawn.log"
+#define WINEXE_LAUNCHER "/media/fat/games/WinEXE/bin/ss1-winexe-launch.sh"
+#define WINEXE_SPAWN_LOG "/media/fat/games/WinEXE/logs/wex-spawn.log"
+#define WINEXE_PATH "/media/fat/games/WinEXE/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 static void winexe_child_setup()
 {
@@ -35,7 +36,7 @@ static void winexe_child_setup()
 	setenv("USER", "root", 1);
 	setenv("LOGNAME", "root", 1);
 	setenv("DISPLAY", ":0", 1);
-	setenv("PATH", "/media/fat/Windows/bin:/usr/bin:/bin:/usr/sbin:/sbin", 1);
+	setenv("PATH", WINEXE_PATH, 1);
 	unsetenv("WAYLAND_DISPLAY");
 
 	nfd = open("/dev/null", O_RDWR);

@@ -3,7 +3,7 @@
 # Does not use /dev/fb0. Does not launch Wine.
 set -e
 
-WIN="${WIN:-/media/fat/Windows}"
+WIN="${WIN:-/media/fat/games/WinEXE}"
 X11="${X11_ROOT:-$WIN/x11}"
 HOSTLIBS="${HOSTLIBS:-$WIN/host-libs}"
 DISPLAY_NUM="${DISPLAY_NUM:-0}"

@@ -2,7 +2,7 @@
 # WinEXE — keep copyrighted and machine-local payloads OFF git.
 # .gitignore is not enough for files already committed; audit tracked history
 # before any public tag. Users place legally obtained Windows/game files only
-# under /media/fat/Windows/apps (and related local paths). Never commit them.
+# under /media/fat/games/WinEXE/apps (and related local paths). Never commit them.
 # =============================================================================
 
 # User-supplied Windows / game trees (copyrighted)
