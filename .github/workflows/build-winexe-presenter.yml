@@ -4,6 +4,7 @@ name: Build WinEXE X11 presenter
 # Target glibc 2.31 (MiSTer) via Debian Bullseye armhf-cross, not Ubuntu 22.04.
 
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     paths:
@@ -71,14 +72,24 @@ jobs:
             arm-linux-gnueabihf-objdump -T ss1-winexe-x11-present | awk "/GLIBC_/ {print \$NF}" | sort -u
           '
 
+      - name: Record ss1-winexe-x11-present provenance
+        run: python3 release/artifacts.py stamp ss1-winexe-x11-present
+
       - uses: actions/upload-artifact@v4
         with:
           name: ss1-winexe-x11-present
-          path: ss1-winexe-x11-present
+          path: |
+            ss1-winexe-x11-present
+            ss1-winexe-x11-present.provenance.json
           if-no-files-found: error
+
+      - name: Record dummy_drv.so provenance
+        run: python3 release/artifacts.py stamp dummy_drv.so
 
       - uses: actions/upload-artifact@v4
         with:
           name: dummy_drv.so
-          path: dummy_drv.so
+          path: |
+            dummy_drv.so
+            dummy_drv.so.provenance.json
           if-no-files-found: error

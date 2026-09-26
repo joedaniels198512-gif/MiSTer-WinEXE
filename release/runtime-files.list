@@ -3,6 +3,8 @@
 # Development-only WMP/DShow/Civ-II injectors are intentionally omitted.
 
 winexe-env.sh
+ss1-winexe-install-prefix.sh
+ss1-winexe-verify-package.py
 ss1-winexe-launch.sh
 ss1-winexe-xorg.sh
 ss1-winexe-present-restart.sh

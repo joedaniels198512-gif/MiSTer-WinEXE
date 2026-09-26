@@ -34,6 +34,15 @@ if [ ! -x "$WINE_ROOT/bin/wine" ]; then
     "$WINEHQ_I386/wine-devel-i386_${WINE_VERSION}_i386.deb"
   wget -q -O "$WORKDIR/debs/wine-devel_${WINE_VERSION}_i386.deb" \
     "$WINEHQ_I386/wine-devel_${WINE_VERSION}_i386.deb"
+  # Same Wine version as the baseline; verify the external bytes before use.
+  python3 - "$(dirname "$0")/../release/runtime-packages.json" "$WORKDIR/debs" <<'VERIFY'
+import hashlib, json, pathlib, sys
+for name, spec in json.load(open(sys.argv[1])).items():
+    if name.startswith('wine-'):
+        path = pathlib.Path(sys.argv[2]) / name
+        if hashlib.sha256(path.read_bytes()).hexdigest() != spec['sha256']:
+            sys.exit('Wine checksum mismatch: ' + name)
+VERIFY
   rm -rf "$WORKDIR/extract"
   mkdir -p "$WORKDIR/extract"
   dpkg-deb -x "$WORKDIR/debs/wine-devel-i386_${WINE_VERSION}_i386.deb" "$WORKDIR/extract"
@@ -41,6 +50,8 @@ if [ ! -x "$WINE_ROOT/bin/wine" ]; then
   rm -rf "$WINE_ROOT"
   mkdir -p "$(dirname "$WINE_ROOT")"
   mv "$WORKDIR/extract/opt/wine-devel" "$WINE_ROOT"
+  mkdir -p "$WINE_ROOT/share/package-notices"
+  cp -a "$WORKDIR/extract/usr/share/doc/." "$WINE_ROOT/share/package-notices/"
 fi
 
 if [ ! -x "$WINE_ROOT/bin/wine" ]; then

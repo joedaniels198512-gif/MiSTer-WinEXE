@@ -1,0 +1,14 @@
+{
+  "box86": {
+    "url": "https://raw.githubusercontent.com/ryanfortner/box86-debs/44f51a4f8013e37a428bbf54540a6e65cad4391a/debian/box86-generic-arm_0.3.9+20260911.b05cb3a-1_armhf.deb",
+    "sha256": "0b6771c6ba02cb55780006a305178d55273e824bd64ed7c0da607696c7c7dc68"
+  },
+  "wine-devel_7.1~bullseye-1_i386.deb": {
+    "url": "https://dl.winehq.org/wine-builds/debian/dists/bullseye/main/binary-i386/wine-devel_7.1~bullseye-1_i386.deb",
+    "sha256": "5e796d067ecb4057d589c2c8be970ea4c43167e301476928ddcdb4f71a188b5d"
+  },
+  "wine-devel-i386_7.1~bullseye-1_i386.deb": {
+    "url": "https://dl.winehq.org/wine-builds/debian/dists/bullseye/main/binary-i386/wine-devel-i386_7.1~bullseye-1_i386.deb",
+    "sha256": "3764f0ee409517f12c63fd80aaa43b7adc8d452245226e9a8d9c7f880c951754"
+  }
+}

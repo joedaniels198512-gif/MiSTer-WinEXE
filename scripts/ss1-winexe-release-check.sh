@@ -2,7 +2,7 @@
 # Lightweight release sanity. No device, no Wine, no games.
 #   ss1-winexe-release-check.sh [repo-root]
 set -eu
-ROOT=$(CDPATH= cd "${1:-$(dirname "$0")/..}" && pwd)
+ROOT=$(CDPATH='' cd "${1:-$(dirname "$0")/..}" && pwd)
 cd "$ROOT"
 fail=0
 say() { echo "$*"; }
@@ -19,7 +19,7 @@ grep -q 'WinEXE' README.md || bad "README must name WinEXE"
 grep -q 'WinEXE_Test.rbf' README.md && bad "README still documents WinEXE_Test.rbf as current"
 grep -q 'vscode-file:' README.md && bad "README contains vscode-file links"
 grep -E '\(vscode-file:' README.md docs/*.md >/dev/null 2>&1 && bad "docs contain vscode-file links"
-if [ ! -f "Scripts/WinEXE Installer.sh" ] && [ ! -f "scripts/WinEXE Installer.sh" ]; then
+if [ ! -f "scripts/WinEXE Installer.sh" ]; then
   bad "missing WinEXE Installer.sh"
 fi
 [ -f scripts/winexe-env.sh ] || bad "missing scripts/winexe-env.sh"
@@ -69,11 +69,18 @@ git ls-files | grep -qE '^tmp/|^extract' && bad "tracked tmp/extract path"
 for sh in scripts/ss1-winexe-launch.sh scripts/ss1-winexe-install-layout.sh \
   scripts/ss1-winexe-check-layout.sh scripts/ss1-winexe-package-release.sh \
   scripts/ss1-winexe-release-check.sh install.sh \
-  "Scripts/WinEXE Installer.sh" scripts/wine scripts/wineserver \
-  scripts/winexe-env.sh
+  "scripts/WinEXE Installer.sh" scripts/wine scripts/wineserver \
+  scripts/winexe-env.sh scripts/ss1-winexe-install-prefix.sh release/prepare-box86.sh
 do
   sh -n "$sh" || bad "syntax $sh"
 done
+
+# Syntax for release tools (compile in memory; no __pycache__ files).
+python3 - <<'PY_CHECK' || bad "release Python syntax"
+import ast, pathlib
+for p in [*pathlib.Path('release').glob('*.py'), pathlib.Path('scripts/ss1-winexe-verify-package.py')]:
+    ast.parse(p.read_text(), filename=str(p))
+PY_CHECK
 
 # No leftover public product name
 if git ls-files '*.md' | xargs grep -l 'current FPGA core.*WinEXE_Test' >/dev/null 2>&1; then

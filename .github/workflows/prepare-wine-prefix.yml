@@ -1,6 +1,7 @@
 name: Prepare Wine 7.1 win32 prefix
 
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     paths:
@@ -29,21 +30,21 @@ jobs:
           # wine32 pulls the i386 shared libraries Wine 7.1 needs.
           # We do not use Ubuntu's Wine binary; we extract WineHQ 7.1.
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            wget ca-certificates xz-utils xvfb \
+            wget ca-certificates xz-utils xvfb xauth python3 \
             wine32:i386
 
       - name: Create SuperStation-matching Wine paths
         run: |
           set -euo pipefail
-          sudo mkdir -p /media/fat/Windows
-          sudo chown "$USER:$USER" /media/fat/Windows
+          sudo mkdir -p /media/fat/games/WinEXE
+          sudo chown "$USER:$USER" /media/fat/games/WinEXE
 
       - name: Prepare prefix
         run: |
           set -euo pipefail
           chmod +x scripts/prepare-wine-prefix.sh
-          export WINE_ROOT=/media/fat/Windows/wine-installer/opt/wine-devel
-          export WINEPREFIX_PATH=/media/fat/Windows/wineprefix-prebuilt
+          export WINE_ROOT=/media/fat/games/WinEXE/wine-installer/opt/wine-devel
+          export WINEPREFIX_PATH=/media/fat/games/WinEXE/wineprefix-prebuilt
           export WORKDIR="$GITHUB_WORKSPACE/.wine-prepare-work"
           export OUT_TAR="$GITHUB_WORKSPACE/wineprefix-prebuilt.tar.xz"
           scripts/prepare-wine-prefix.sh
@@ -54,15 +55,22 @@ jobs:
           {
             echo "runner=$(uname -m)"
             echo "os=$(. /etc/os-release && echo "$PRETTY_NAME")"
-            /media/fat/Windows/wine-installer/opt/wine-devel/bin/wine --version
-            echo "prefix_entries=$(find /media/fat/Windows/wineprefix-prebuilt | wc -l)"
-            echo "system32_entries=$(find /media/fat/Windows/wineprefix-prebuilt/drive_c/windows/system32 | wc -l)"
-            ls -la /media/fat/Windows/wineprefix-prebuilt
+            /media/fat/games/WinEXE/wine-installer/opt/wine-devel/bin/wine --version
+            echo "prefix_entries=$(find /media/fat/games/WinEXE/wineprefix-prebuilt | wc -l)"
+            echo "system32_entries=$(find /media/fat/games/WinEXE/wineprefix-prebuilt/drive_c/windows/system32 | wc -l)"
+            ls -la /media/fat/games/WinEXE/wineprefix-prebuilt
             echo "--- dosdevices ---"
-            ls -la /media/fat/Windows/wineprefix-prebuilt/dosdevices
+            ls -la /media/fat/games/WinEXE/wineprefix-prebuilt/dosdevices
             echo "--- manifest ---"
-            cat /media/fat/Windows/wineprefix-prebuilt/PREFIX_MANIFEST.txt
+            cat /media/fat/games/WinEXE/wineprefix-prebuilt/PREFIX_MANIFEST.txt
           } | tee "$GITHUB_WORKSPACE/prefix-builder.log"
+
+      - name: Pack the matching Wine runtime
+        run: |
+          tar -C /media/fat/games/WinEXE -cJf wine-runtime.tar.xz wine-installer
+
+      - name: Record wineprefix-prebuilt provenance
+        run: python3 release/artifacts.py stamp wineprefix-prebuilt
 
       - name: Upload prefix artifact
         uses: actions/upload-artifact@v4
@@ -71,5 +79,7 @@ jobs:
           path: |
             wineprefix-prebuilt.tar.xz
             prefix-builder.log
+            wine-runtime.tar.xz
+            wineprefix-prebuilt.provenance.json
           if-no-files-found: error
           retention-days: 14

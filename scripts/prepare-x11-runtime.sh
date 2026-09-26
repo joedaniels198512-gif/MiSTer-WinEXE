@@ -229,7 +229,11 @@ fi
 if [ ! -f "$OUT_DIR/share/X11/default.xkm" ]; then
   log "WARN: default.xkm not built on this host (install x11-xkb-utils)"
 fi
-if [ -f "$WORKDIR/extract/usr/share/X11/rgb.txt" ]; then
+# Debian's share/X11/rgb.txt is an absolute /etc/X11 link. Copy the
+# extracted package's database, never the build host's file/link.
+if [ -f "$WORKDIR/extract/etc/X11/rgb.txt" ]; then
+  cp "$WORKDIR/extract/etc/X11/rgb.txt" "$OUT_DIR/share/X11/rgb.txt"
+elif [ -f "$WORKDIR/extract/usr/share/X11/rgb.txt" ] && [ ! -L "$WORKDIR/extract/usr/share/X11/rgb.txt" ]; then
   cp -a "$WORKDIR/extract/usr/share/X11/rgb.txt" "$OUT_DIR/share/X11/rgb.txt"
 fi
 if [ -d "$WORKDIR/extract/usr/share/X11/locale" ]; then
@@ -388,7 +392,7 @@ fi
 log "Xorg modules:"
 find "$OUT_DIR/lib/xorg/modules" -type f | sort
 log "libs:"
-ls -la "$OUT_DIR/lib" | head -80
+ls -la "$OUT_DIR/lib" | sed -n '1,80p'
 
 TAR_DIR=$(dirname "$OUT_DIR")
 TAR_BASE=$(basename "$OUT_DIR")

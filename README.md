@@ -55,7 +55,13 @@ Boot the MiSTer / SuperStation. From the menu:
 
 **Scripts → WinEXE Installer**
 
-The installer configures WinEXE and installs the runtime.
+The installer validates the package and installs the runtime. A fresh install
+also creates a 512 MiB ext4 Wine prefix image, so allow that additional free space.
+Run it with WinEXE shut down. Existing `/media/fat/Windows` installations are
+left untouched: the installer stops and reports that migration will be handled
+separately; it does not automatically migrate old prefixes.
+
+Installer details and developer checks: [Release build and installation](docs/RELEASE_BUILD.md).
 
 The core is installed under `_Computer` as `WinEXE_<YYYYMMDD>.rbf` (for example `/media/fat/_Computer/WinEXE_20260918.rbf`).
 

@@ -43,7 +43,7 @@ Default SuperStation path: `/media/fat/games/WinEXE/wine-installer/opt/wine-deve
 [Box86](https://github.com/ptitSeb/box86) is MIT.
 The public zip ships the generic ARMHF binary from
 [ryanfortner/box86-debs](https://github.com/ryanfortner/box86-debs)
-(`box86-generic-arm`, see `Windows/box86-ss1/SOURCE.txt`).
+(`box86-generic-arm`, see `games/WinEXE/box86-ss1/SOURCE.txt`).
 Sidecar multimedia builds (`box86-gst`, `box86-gstflow`) are
 experimental and are **not** in the v0.1.0-beta end-user zip.
 
@@ -73,6 +73,8 @@ installed next to the launcher. They are **not** game or Windows files:
 - `ss1-pal8-map.so`
 - `ss1-civ2-cdaudio.so` (Civ II CD-audio ioctl shim)
 - `ss1-cnc-pal8.dll` / `ss1-cnc-pal8.exe` (C&C PAL8 mailbox injector)
+- `ss1-cnc-capslie.exe` (existing C&C in-memory compatibility helper)
+- `ss1-cnc-cdprobe.exe` (Wine CD-ROM registration helper for C&C and Civ II)
 
 ## What must never be justified by this file
 

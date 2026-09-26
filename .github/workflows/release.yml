@@ -1,8 +1,7 @@
 name: Release sanity and package
 
-# Builds a FAT-rooted WinEXE-v0.1.0-beta.zip
-# (_Computer/, Scripts/, docs/WinEXE/, games/WinEXE/). Place CI binaries in artifacts/.
-
+# Every component comes from this run/revision. No ignored local artifacts or
+# unrelated "latest successful" workflow downloads are used.
 on:
   workflow_dispatch:
   push:
@@ -16,58 +15,89 @@ on:
       - "release/**"
       - "profiles/**"
       - "wex/**"
-      - "scripts/ss1-winexe-*.sh"
-      - "scripts/ss1-cnc-*.sh"
-      - "scripts/ss1-x11-env.sh"
-      - "scripts/ss1-xorg.sh"
-      - "scripts/ss1-mount-prefix.sh"
-      - "scripts/xorg.winexe.conf"
+      - "main/**"
+      - "fpga/**"
+      - "scripts/**"
       - "docs/**"
       - ".github/workflows/release.yml"
+      - ".github/workflows/build-winexe-core.yml"
+      - ".github/workflows/build-winexe-presenter.yml"
+      - ".github/workflows/build-mister-winexe.yml"
+      - ".github/workflows/prepare-wine-prefix.yml"
+      - ".github/workflows/prepare-x11-runtime.yml"
+      - ".github/workflows/prepare-host-libs.yml"
 
 permissions:
   contents: read
 
 jobs:
-  sanity-and-zip:
-    name: Release check + zip
+  sanity:
     runs-on: ubuntu-22.04
-    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - run: sh scripts/ss1-winexe-release-check.sh
+      - name: Packaging and installer regression checks
+        run: python3 -B release/test_release.py
 
-      - name: Sanity
+  core:
+    needs: sanity
+    uses: ./.github/workflows/build-winexe-core.yml
+  main:
+    needs: sanity
+    uses: ./.github/workflows/build-mister-winexe.yml
+  presenter:
+    needs: sanity
+    uses: ./.github/workflows/build-winexe-presenter.yml
+  prefix:
+    needs: sanity
+    uses: ./.github/workflows/prepare-wine-prefix.yml
+  x11:
+    needs: sanity
+    uses: ./.github/workflows/prepare-x11-runtime.yml
+  host-libs:
+    needs: sanity
+    uses: ./.github/workflows/prepare-host-libs.yml
+
+  box86:
+    needs: sanity
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends zstd binutils
+      - run: bash release/prepare-box86.sh
+      - run: python3 release/artifacts.py stamp box86-runtime
+      - uses: actions/upload-artifact@v4
+        with:
+          name: box86-runtime
+          path: |
+            box86-runtime.tar.xz
+            box86-runtime.provenance.json
+          if-no-files-found: error
+
+  package:
+    needs: [core, main, presenter, prefix, x11, host-libs, box86]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/release
+      - name: Stage a source-only layout
         run: |
-          chmod +x scripts/ss1-winexe-release-check.sh \
-                   scripts/ss1-winexe-package-release.sh \
-                   scripts/ss1-winexe-install-layout.sh \
-                   scripts/ss1-winexe-check-layout.sh \
-                   install.sh \
-                   scripts/wine scripts/wineserver \
-                   scripts/winexe-env.sh
-          if [ -f "scripts/WinEXE Installer.sh" ]; then
-            chmod +x "scripts/WinEXE Installer.sh"
-          fi
-          if [ -f "Scripts/WinEXE Installer.sh" ]; then
-            chmod +x "Scripts/WinEXE Installer.sh"
-          fi
-          scripts/ss1-winexe-release-check.sh
-
-      - name: Stage a fake SD tree
+          sh scripts/ss1-winexe-install-layout.sh "$RUNNER_TEMP/fat"
+          sh scripts/ss1-winexe-check-layout.sh "$RUNNER_TEMP/fat"
+      - name: Package and verify extracted ZIP
         run: |
-          set -euo pipefail
-          STAGE="$RUNNER_TEMP/fat"
-          mkdir -p "$STAGE"
-          scripts/ss1-winexe-install-layout.sh "$STAGE"
-          scripts/ss1-winexe-check-layout.sh "$STAGE"
-
-      - name: Package zip
+          sh scripts/ss1-winexe-package-release.sh
+          unzip -q dist/WinEXE-v0.1.0-beta.zip -d "$RUNNER_TEMP/package"
+          python3 scripts/ss1-winexe-verify-package.py "$RUNNER_TEMP/package"
+          unzip -l dist/WinEXE-v0.1.0-beta.zip | sed -n '1,80p'
+      - name: Verify ext4 creation and reinstall on Linux
         run: |
-          mkdir -p dist
-          scripts/ss1-winexe-package-release.sh "$GITHUB_WORKSPACE" \
-            "$GITHUB_WORKSPACE/dist/WinEXE-v0.1.0-beta.zip"
-          unzip -l dist/WinEXE-v0.1.0-beta.zip | head -80
-
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gdb
+          sudo python3 -B release/test_prefix_linux.py "$RUNNER_TEMP/package"
       - uses: actions/upload-artifact@v4
         with:
           name: WinEXE-v0.1.0-beta

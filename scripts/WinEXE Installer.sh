@@ -8,7 +8,7 @@ FAT="${1:-/media/fat}"
 WINEXE_ROOT="${WINEXE_ROOT:-$FAT/games/WinEXE}"
 OLDWIN="$FAT/Windows"
 
-HERE=$(CDPATH= cd "$(dirname "$0")" && pwd)
+HERE=$(CDPATH='' cd "$(dirname "$0")" && pwd)
 PAYLOAD=""
 for cand in \
   "$HERE/.." \
@@ -19,7 +19,7 @@ do
   if [ -f "$cand/games/WinEXE/bin/ss1-winexe-launch.sh" ] || \
      [ -f "$cand/_Computer/WinEXE.rbf" ] || \
      ls "$cand"/_Computer/WinEXE_*.rbf >/dev/null 2>&1; then
-    PAYLOAD=$(CDPATH= cd "$cand" && pwd)
+    PAYLOAD=$(CDPATH='' cd "$cand" && pwd)
     break
   fi
 done
@@ -42,6 +42,7 @@ copy_file() {
   dest=$2
   [ -f "$src" ] || return 1
   mkdir -p "$(dirname "$dest")"
+  [ "$src" -ef "$dest" ] && return 0
   cp -f "$src" "$dest"
 }
 
@@ -50,54 +51,50 @@ copy_tree() {
   dest=$2
   [ -d "$src" ] || return 0
   mkdir -p "$dest"
+  [ "$src" -ef "$dest" ] && return 0
   cp -a "$src/." "$dest/"
 }
 
-copy_tree_if_missing() {
-  src=$1
-  dest=$2
-  [ -d "$src" ] || return 0
-  mkdir -p "$dest"
-  # Do not overwrite existing user files.
-  if command -v rsync >/dev/null 2>&1; then
-    rsync -a --ignore-existing "$src"/ "$dest"/
-  else
-    (CDPATH= cd "$src" && find . -type f) | while IFS= read -r rel; do
-      rel=${rel#./}
-      if [ ! -e "$dest/$rel" ]; then
-        mkdir -p "$dest/$(dirname "$rel")"
-        cp -f "$src/$rel" "$dest/$rel"
-      fi
-    done
+# Stop before ANY installation write if an old installation is present.
+# Migration is intentionally a separate operation; do not merge apps/media or
+# touch an old prefix, even when a new runtime also exists.
+for old in "$OLDWIN/bin" "$OLDWIN/apps" "$OLDWIN"/wineprefix*; do
+  if [ -e "$old" ] || [ -L "$old" ]; then
+    fail "Previous WinEXE installation found at $OLDWIN. Automatic migration is not currently performed. The old installation is untouched; migration will be handled separately."
   fi
-}
+done
 
-mkdir -p \
-  "$FAT/_Computer" \
-  "$FAT/Scripts" \
-  "$FAT/docs/WinEXE" \
-  "$WINEXE_ROOT/bin" \
-  "$WINEXE_ROOT/apps/xp-games" \
-  "$WINEXE_ROOT/apps/civ2" \
-  "$WINEXE_ROOT/apps/cnc" \
-  "$WINEXE_ROOT/profiles/experimental" \
-  "$WINEXE_ROOT/logs" \
-  "$WINEXE_ROOT/iso"
-
-# --- migrate an older /media/fat/Windows beta without deleting it ---
-if [ -d "$OLDWIN/bin" ] || [ -d "$OLDWIN/apps" ] || [ -d "$OLDWIN/wineprefix-prebuilt" ]; then
-  echo "NOTICE: previous WinEXE beta found at $OLDWIN"
-  echo "  New runtime root is $WINEXE_ROOT"
-  echo "  User application files are copied only if missing at the destination."
-  echo "  The old $OLDWIN tree is left in place (not deleted)."
-  if [ -d "$OLDWIN/apps" ]; then
-    copy_tree_if_missing "$OLDWIN/apps" "$WINEXE_ROOT/apps"
-    echo "  apps: merged into $WINEXE_ROOT/apps (existing files kept)"
-  fi
-  if [ -d "$OLDWIN/iso" ]; then
-    copy_tree_if_missing "$OLDWIN/iso" "$WINEXE_ROOT/iso"
-  fi
+# The runtime contains absolute paths. FAT is an alternate SD mount for testing
+# or staging, not a request to relocate the runtime layout.
+[ "$WINEXE_ROOT" = "$FAT/games/WinEXE" ] || fail "runtime must be under games/WinEXE"
+for tool in python3 mountpoint gdb pidof taskset setsid; do
+  command -v "$tool" >/dev/null 2>&1 || fail "required tool missing: $tool"
+done
+# Installing over running binaries or a live Wine session is unsafe.
+if command -v pidof >/dev/null 2>&1 && pidof wineserver explorer.exe Xorg >/dev/null 2>&1; then
+  fail "Stop WinEXE (full shutdown / leave the core) before installing."
 fi
+VERIFY="$PAYLOAD/games/WinEXE/bin/ss1-winexe-verify-package.py"
+[ -f "$VERIFY" ] || fail "package verifier missing"
+python3 "$VERIFY" "$PAYLOAD" || fail "release payload is incomplete or damaged"
+
+INI="$FAT/MiSTer.ini"
+if [ -f "$INI" ]; then
+  python3 - "$INI" << 'CHECK_INI'
+import configparser, sys
+cfg = configparser.ConfigParser(strict=False, interpolation=None)
+# MiSTer allows global keys before the first section.
+cfg.read_string("[global]\n" + open(sys.argv[1]).read())
+for section in cfg.sections():
+    if section.lower() in {"winexe", "winexe_test"}:
+        if cfg.get(section, "main", fallback="").strip() != "MiSTer_WinEXE":
+            sys.exit("Existing [WinEXE] main setting conflicts; left unchanged. Correct it explicitly before installing.")
+CHECK_INI
+fi
+
+mkdir -p "$FAT/_Computer" "$FAT/Scripts" "$FAT/docs/WinEXE" \
+  "$WINEXE_ROOT/bin" "$WINEXE_ROOT/apps/diag" \
+  "$WINEXE_ROOT/profiles" "$WINEXE_ROOT/logs" "$WINEXE_ROOT/iso"
 
 # Canonical dated RBF. Fall back to undated name if that is all the zip has.
 RBF_SRC=""
@@ -125,21 +122,22 @@ SRC_RT="$PAYLOAD/games/WinEXE"
 [ -d "$SRC_RT" ] || SRC_RT="$PAYLOAD/Windows"
 
 if [ -d "$SRC_RT/bin" ]; then
-  cp -f "$SRC_RT"/bin/* "$WINEXE_ROOT/bin/" 2>/dev/null || true
+  copy_tree "$SRC_RT/bin" "$WINEXE_ROOT/bin"
 fi
 chmod +x "$WINEXE_ROOT"/bin/* 2>/dev/null || true
 
 if [ -d "$SRC_RT/profiles" ]; then
-  cp -f "$SRC_RT"/profiles/*.ini "$WINEXE_ROOT/profiles/" 2>/dev/null || true
-  mkdir -p "$WINEXE_ROOT/profiles/experimental"
-  cp -f "$SRC_RT"/profiles/experimental/*.ini "$WINEXE_ROOT/profiles/experimental/" 2>/dev/null || true
+  copy_tree "$SRC_RT/profiles" "$WINEXE_ROOT/profiles"
 elif [ -d "$PAYLOAD/profiles" ]; then
   cp -f "$PAYLOAD"/profiles/*.ini "$WINEXE_ROOT/profiles/"
 fi
 
 # .wex stay at games/WinEXE/*.wex for the OSD picker
 if [ -d "$SRC_RT" ]; then
-  cp -f "$SRC_RT"/*.wex "$WINEXE_ROOT/" 2>/dev/null || true
+  for wex in "$SRC_RT"/*.wex; do
+    [ -f "$wex" ] || continue
+    copy_file "$wex" "$WINEXE_ROOT/$(basename "$wex")"
+  done
 fi
 if [ -f "$SRC_RT/apps/README.md" ]; then
   copy_file "$SRC_RT/apps/README.md" "$WINEXE_ROOT/apps/README.md"
@@ -150,6 +148,9 @@ copy_tree "$SRC_RT/host-libs" "$WINEXE_ROOT/host-libs"
 copy_tree "$SRC_RT/wine-installer" "$WINEXE_ROOT/wine-installer"
 copy_tree "$SRC_RT/box86-ss1" "$WINEXE_ROOT/box86-ss1"
 copy_tree "$SRC_RT/box86-extracted" "$WINEXE_ROOT/box86-extracted"
+chmod +x "$WINEXE_ROOT/box86-ss1/box86" \
+  "$WINEXE_ROOT/wine-installer/opt/wine-devel/bin/"* \
+  "$WINEXE_ROOT/x11/bin/"* "$WINEXE_ROOT/x11/lib/xorg/Xorg"
 
 if [ -f "$SRC_RT/x11/lib/xorg/modules/drivers/dummy_drv.so" ]; then
   :
@@ -158,90 +159,48 @@ elif [ -f "$PAYLOAD/dummy_drv.so" ]; then
   cp -f "$PAYLOAD/dummy_drv.so" "$WINEXE_ROOT/x11/lib/xorg/modules/drivers/"
 fi
 
-# Wine prefix: unpack the clean tar, then retarget Wine builtin symlinks.
+# Only project-built helpers are copied from apps; user applications are not
+# release payloads and must never be merged or overwritten by this installer.
+for helper in ss1-cnc-pal8.exe ss1-cnc-pal8.dll ss1-cnc-capslie.exe ss1-cnc-cdprobe.exe; do
+  copy_file "$SRC_RT/apps/diag/$helper" "$WINEXE_ROOT/apps/diag/$helper"
+done
+copy_file "$SRC_RT/wineprefix-prebuilt.tar.xz" "$WINEXE_ROOT/wineprefix-prebuilt.tar.xz"
+sh "$WINEXE_ROOT/bin/ss1-winexe-install-prefix.sh" "$WINEXE_ROOT" "$OLDWIN"
 PREFIX_IMG="$WINEXE_ROOT/wineprefix-prebuilt.ext4"
 PREFIX_MNT="$WINEXE_ROOT/wineprefix-prebuilt"
-SRC_IMG="$SRC_RT/wineprefix-prebuilt.ext4"
-SRC_TAR="$SRC_RT/wineprefix-prebuilt.tar.xz"
-[ -f "$SRC_TAR" ] || SRC_TAR="$PAYLOAD/wineprefix-prebuilt.tar.xz"
 
-rewrite_prefix_links() {
-  root=$1
-  [ -d "$root" ] || return 0
-  find "$root" -type l 2>/dev/null | while IFS= read -r link; do
-    tgt=$(readlink "$link" 2>/dev/null) || continue
-    case "$tgt" in
-      /media/fat/Windows/*)
-        newt="/media/fat/games/WinEXE/${tgt#/media/fat/Windows/}"
-        ln -sfn "$newt" "$link"
-        ;;
-    esac
-  done
-}
-
-prepare_prefix() {
-  if [ -d "$OLDWIN/wineprefix-prebuilt" ] && [ -f "$OLDWIN/wineprefix-prebuilt/system.reg" ]; then
-    if [ ! -f "$PREFIX_MNT/system.reg" ]; then
-      echo "prefix: reusing existing beta prefix (not overwritten)"
-      copy_tree "$OLDWIN/wineprefix-prebuilt" "$PREFIX_MNT"
-      rewrite_prefix_links "$PREFIX_MNT"
-      return 0
-    fi
-  fi
-  if [ -f "$SRC_IMG" ]; then
-    cp -f "$SRC_IMG" "$PREFIX_IMG"
-  fi
-  if [ -f "$PREFIX_IMG" ] && command -v mkfs.ext4 >/dev/null 2>&1 && [ -f /proc/mounts ]; then
-    mkdir -p "$PREFIX_MNT"
-    if ! grep -q " $PREFIX_MNT " /proc/mounts 2>/dev/null; then
-      mount -o loop,noatime "$PREFIX_IMG" "$PREFIX_MNT" 2>/dev/null || true
-    fi
-    if [ -f "$PREFIX_MNT/system.reg" ]; then
-      rewrite_prefix_links "$PREFIX_MNT"
-      echo "prefix: mounted $PREFIX_IMG"
-      return 0
-    fi
-  fi
-  if [ -f "$SRC_TAR" ]; then
-    mkdir -p "$WINEXE_ROOT"
-    tar -C "$WINEXE_ROOT" -xJf "$SRC_TAR"
-    rewrite_prefix_links "$PREFIX_MNT"
-    echo "prefix: extracted wineprefix-prebuilt.tar.xz"
-    return 0
-  fi
-  if [ -d "$SRC_RT/wineprefix-prebuilt" ]; then
-    copy_tree "$SRC_RT/wineprefix-prebuilt" "$PREFIX_MNT"
-    rewrite_prefix_links "$PREFIX_MNT"
-    echo "prefix: copied directory"
-    return 0
-  fi
-  fail "clean Wine prefix missing from the release package"
-}
-
-prepare_prefix
-
-# MiSTer.ini: add [WinEXE] only. Do not rewrite other sections.
-INI="$FAT/MiSTer.ini"
-FRAG="$PAYLOAD/docs/WinEXE/WinEXE.ini"
-[ -f "$FRAG" ] || FRAG="$PAYLOAD/mister/WinEXE.ini"
-[ -f "$FRAG" ] || FRAG="$PAYLOAD/WinEXE.ini"
-if [ -f "$FRAG" ]; then
-  if [ -f "$INI" ]; then
-    if grep -q '^\[WinEXE\]' "$INI"; then
-      echo "MiSTer.ini: [WinEXE] already present (left unchanged)"
-    else
-      printf '\n' >> "$INI"
-      cat "$FRAG" >> "$INI"
-      echo "MiSTer.ini: appended [WinEXE] main=MiSTer_WinEXE"
-    fi
-  else
-    echo "MiSTer.ini: not found (fragment is in docs/WinEXE/WinEXE.ini)"
-  fi
-fi
+# Add only missing WinEXE sections; preserve all existing configuration.
+python3 - "$FAT/MiSTer.ini" "$PAYLOAD/docs/WinEXE/WinEXE.ini" <<'WRITE_INI'
+import configparser, os, pathlib, sys, tempfile
+ini, fragment = map(pathlib.Path, sys.argv[1:])
+cfg = configparser.ConfigParser(strict=False, interpolation=None)
+cfg.read_string("[global]\n" + (ini.read_text() if ini.exists() else ""))
+existing = {s.lower() for s in cfg.sections()}
+add = configparser.ConfigParser(interpolation=None)
+add.read(fragment)
+missing = [s for s in add.sections() if s.lower() not in existing]
+if missing:
+    content = ini.read_text() if ini.exists() else ""
+    content += ''.join("\n[" + section + "]\nmain=MiSTer_WinEXE\n" for section in missing)
+    fd, pending = tempfile.mkstemp(prefix='.MiSTer.ini.', dir=ini.parent)
+    try:
+        with os.fdopen(fd, 'w') as out:
+            out.write(content)
+            out.flush()
+            os.fsync(out.fileno())
+        os.chmod(pending, ini.stat().st_mode & 0o777 if ini.exists() else 0o644)
+        os.replace(pending, ini)
+    finally:
+        if os.path.exists(pending):
+            os.unlink(pending)
+    print("MiSTer.ini: added " + ", ".join(missing))
+else:
+    print("MiSTer.ini: existing WinEXE sections preserved")
+WRITE_INI
 
 # Docs under the normal MiSTer docs tree
 if [ -d "$PAYLOAD/docs/WinEXE" ]; then
-  cp -f "$PAYLOAD"/docs/WinEXE/* "$FAT/docs/WinEXE/" 2>/dev/null || true
+  copy_tree "$PAYLOAD/docs/WinEXE" "$FAT/docs/WinEXE"
 else
   for doc in README.md LICENSE COPYING THIRD_PARTY_NOTICES.md; do
     [ -f "$PAYLOAD/$doc" ] && cp -f "$PAYLOAD/$doc" "$FAT/docs/WinEXE/"
@@ -270,7 +229,7 @@ need "$WINEXE_ROOT/Notepad.wex" || err=1
 need "$WINEXE_ROOT/x11/lib/xorg/modules/drivers/dummy_drv.so" || err=1
 need "$WINEXE_ROOT/wine-installer/opt/wine-devel/bin/wine" || err=1
 need "$WINEXE_ROOT/host-libs" || err=1
-if [ ! -f "$PREFIX_MNT/system.reg" ] && [ ! -f "$PREFIX_IMG" ]; then
+if [ ! -f "$PREFIX_MNT/system.reg" ] || [ ! -f "$PREFIX_MNT/user.reg" ]; then
   echo "MISSING $PREFIX_MNT (Wine prefix)"
   err=1
 else

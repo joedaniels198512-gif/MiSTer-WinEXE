@@ -5,6 +5,7 @@ name: Build MiSTer_WinEXE
 # with the official ARM GNU 10.2 toolchain.
 
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     paths:
@@ -56,10 +57,14 @@ jobs:
           file ../MiSTer_WinEXE
           ls -l ../MiSTer_WinEXE
 
+      - name: Record MiSTer_WinEXE provenance
+        run: python3 release/artifacts.py stamp MiSTer_WinEXE
+
       - uses: actions/upload-artifact@v4
         with:
           name: MiSTer_WinEXE
           path: |
             MiSTer_WinEXE
             MAIN_MISTER.sha
+            MiSTer_WinEXE.provenance.json
           if-no-files-found: error

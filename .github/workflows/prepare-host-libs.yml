@@ -1,6 +1,7 @@
 name: Prepare ARMHF host-libs
 
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     paths:
@@ -53,6 +54,9 @@ jobs:
             cat host-libs/HOST_LIBS_MANIFEST.txt
           } | tee "$GITHUB_WORKSPACE/host-libs-builder.log"
 
+      - name: Record host-libs provenance
+        run: python3 release/artifacts.py stamp host-libs
+
       - name: Upload host-libs artifact
         uses: actions/upload-artifact@v4
         with:
@@ -60,5 +64,6 @@ jobs:
           path: |
             host-libs.tar.xz
             host-libs-builder.log
+            host-libs.provenance.json
           if-no-files-found: error
           retention-days: 14
