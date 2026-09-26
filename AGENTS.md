@@ -24,7 +24,8 @@ These rules apply throughout this repository. Keep technical detail in the exist
 ## Build and validation
 
 - Keep the repository buildable. Use the relevant component workflow as the build recipe; preserve ARMv7/Cortex-A9 and target glibc compatibility. Do not compile on the SuperStation.
-- Run relevant local validation after changes: syntax checks for edited scripts, release checks for packaging/profile changes, and component builds where available. Report checks not run and why.
+- Production FPGA/Quartus builds must never run locally on this Mac, including through Rosetta or Docker: that route is too slow and unreliable. Use local source changes → authorized commit/push → GitHub Actions Quartus 17.0.2 build → retrieve and verify the generated artifact → controlled SuperStation One deployment → physical verification by the user. A request to edit or validate does not authorize committing, pushing, or deploying.
+- Run relevant local validation after changes: source inspection, syntax/static checks, packaging tests, shell/Python validation, and lightweight compilation where practical. Report checks not run and why; production FPGA builds belong in CI only.
 - Account for Linux case sensitivity even when local checks pass on macOS. A passing release/layout check does not establish package completeness or successful installation.
 - For release changes, verify required runtime/helper artifacts and their provenance, fresh installation, and preservation of existing installations. Do not assume ignored local artifacts exist in CI or match current source.
 - Keep tests focused on changed behavior and plausible regressions. Preserve useful instrumentation and record the component versions, settings, and evidence needed to reproduce results.
