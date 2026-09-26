@@ -51,7 +51,7 @@ VERIFY
   mkdir -p "$(dirname "$WINE_ROOT")"
   mv "$WORKDIR/extract/opt/wine-devel" "$WINE_ROOT"
   mkdir -p "$WINE_ROOT/share/package-notices"
-  cp -a "$WORKDIR/extract/usr/share/doc/." "$WINE_ROOT/share/package-notices/"
+  cp -aL "$WORKDIR/extract/usr/share/doc/." "$WINE_ROOT/share/package-notices/"
 fi
 
 if [ ! -x "$WINE_ROOT/bin/wine" ]; then
